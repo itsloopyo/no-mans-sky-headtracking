@@ -211,6 +211,16 @@ static const BuildProfile kSteamProfile_20260921 = {
     0x009910D7u,
     0x0071C690u,
     0x01479930u,
+    0u,            // sceneSampleRva - none pinned on this build
+    // cameraCommitThirdPersonRva - this image inlines the camera write into
+    // each behaviour, so cameraCommitRva above is the first-person behaviour's
+    // copy and fires nowhere else. cGcCameraBehaviourThirdPerson,
+    // PlayerThirdPerson and SpacewalkThirdPerson share one slot-4 function
+    // (0x0067D710) whose gate skips to the address below, so one more pin
+    // carries the on-foot third-person view, the spacewalk and the player
+    // third-person camera together. The camera is in RSI there, the register
+    // the first-person site already names: both targets end `mov rcx, rsi`.
+    0x0067FBC6u,
 };
 
 // Steam Win64 build, TimeDateStamp 0x6AAA83EE (2026-09-17).
@@ -438,14 +448,6 @@ static const BuildProfile kGdkProfile_20260921 = {
     // against 4 px RMS and 15 px peaks from the newest commit. Hit in first and
     // third person alike.
     0x00516884u,
-    // cameraCommitThirdPersonRva - the same gate shape inside
-    // cGcCameraBehaviourThirdPerson slot 4 (0x0067D710), whose `jne` lands on
-    // 0x0067FBC6. PlayerThirdPerson and SpacewalkThirdPerson share that exact
-    // function, so this one address carries the on-foot third-person view, the
-    // spacewalk and the player third-person camera together. The camera is in
-    // RSI there, the same register the first-person site uses: both targets end
-    // `mov rcx, rsi` into the same call.
-    0x0067FBC6u,
 };
 
 // Xbox Game Pass (GDK) Win64 build, TimeDateStamp 0x6AA13600 (2026-09-09).

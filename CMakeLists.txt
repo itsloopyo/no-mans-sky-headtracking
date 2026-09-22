@@ -124,6 +124,18 @@ if(MSVC)
 endif()
 add_test(NAME config_test COMMAND config_test)
 
+add_executable(build_profile_test tests/build_profile_test.cpp)
+set_target_properties(build_profile_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+target_include_directories(build_profile_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp/include)
+if(MSVC)
+    target_compile_options(build_profile_test PRIVATE /W4 /WX /EHsc)
+endif()
+target_link_libraries(build_profile_test PRIVATE cameraunlock)
+add_test(NAME build_profile_test COMMAND build_profile_test)
+
 add_executable(commit_hook_test tests/commit_hook_test.cpp)
 set_target_properties(commit_hook_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
