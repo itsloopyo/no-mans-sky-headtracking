@@ -2,10 +2,6 @@
 
 ## [0.1.0] - 2026-09-22
 
-First release.
-
-## [Unreleased]
-
 ### Added
 
 - Xbox Game Pass support. The Game Pass copy ships a different binary from the
