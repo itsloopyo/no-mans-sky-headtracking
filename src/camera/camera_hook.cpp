@@ -1368,7 +1368,16 @@ void CameraHook::Install() {
     gs.playerShipRva = profile->playerShipRva;
     InstallGameStateProbe(gs);
     LogFramePhaseStatus();
-    InstallCommitHook(profile->cameraCommitRva, profile->commitCameraReg);
+    // The read watch owns the same debug register as the third-person site, so
+    // a session running that diagnostic keeps the first-person site only.
+    const std::uint32_t thirdPersonCommit =
+        cfg.readWatch ? 0u : profile->cameraCommitThirdPersonRva;
+    if (cfg.readWatch && profile->cameraCommitThirdPersonRva != 0) {
+        HT_LOG("Diag: read watch armed, so the third-person commit site is not - "
+               "they share a debug register.");
+    }
+    InstallCommitHook(profile->cameraCommitRva, thirdPersonCommit,
+                      profile->commitCameraReg);
     {
         char raw[32] = {};
         GetPrivateProfileStringA("Debug", "SceneSampleRva", "", raw, sizeof(raw),

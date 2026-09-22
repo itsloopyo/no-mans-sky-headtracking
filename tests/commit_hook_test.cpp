@@ -206,6 +206,50 @@ void CommitCameraIsReported() {
 
     NMSHT::g_cameraReg = reg;
 }
+
+// The Steam image inlines the camera write into each behaviour, so the
+// third-person cameras are a SECOND site in its own debug register. Slot 2 is
+// the data watch's, and a watch is a data breakpoint: the handler must tell the
+// two apart or a diagnostic session would be read as a commit.
+void ThirdPersonSiteIsClaimedOnItsOwnSlot() {
+    __declspec(align(1)) static char other = 0;
+    const auto third = reinterpret_cast<uintptr_t>(&other);
+    NMSHT::g_thirdPersonAddr = third;
+
+    CONTEXT ctx{};
+    ctx.Rip = third;
+    ctx.Dr2 = third;
+    ctx.Dr7 = 1ull << 4;  // L2, execute, length 1
+    ctx.Dr6 = 4;
+    ctx.EFlags = 0x246;
+    EXCEPTION_RECORD record{};
+    record.ExceptionCode = EXCEPTION_SINGLE_STEP;
+    record.ExceptionAddress = reinterpret_cast<void*>(third);
+    EXCEPTION_POINTERS info{&record, &ctx};
+
+    const auto before = renders.load();
+    Check(NMSHT::OnCommitBreak(&info) == EXCEPTION_CONTINUE_EXECUTION,
+          "third-person commit is handled");
+    Check(renders.load() == before + 1, "third-person commit reaches the camera callback");
+    Check(ctx.Dr6 == 0, "third-person commit clears its own status bit");
+    Check((ctx.EFlags & NMSHT::kEFlagsResumeFlag) != 0,
+          "third-person commit sets the resume flag");
+
+    ctx.Dr6 = 4; ctx.EFlags = 0x246;
+    ctx.Dr7 = (1ull << 4) | (0xDull << 24);  // slot 2 as a 4-byte data watch
+    Check(NMSHT::OnCommitBreak(&info) == EXCEPTION_CONTINUE_SEARCH,
+          "the data watch sharing slot 2 is not claimed as a commit");
+
+    ctx.Dr7 = 1ull << 4;
+    ctx.Dr2 = third + 8;
+    Check(NMSHT::OnCommitBreak(&info) == EXCEPTION_CONTINUE_SEARCH,
+          "another owner of slot 2 is not claimed");
+
+    ctx.Dr2 = third;
+    NMSHT::g_thirdPersonAddr = 0;
+    Check(NMSHT::OnCommitBreak(&info) == EXCEPTION_CONTINUE_SEARCH,
+          "with no third-person site pinned, slot 2 is left alone");
+}
 }
 
 int main(int argc, char** argv) {
@@ -215,6 +259,7 @@ int main(int argc, char** argv) {
     } else {
         ContextRegression();
         CommitCameraIsReported();
+        ThirdPersonSiteIsClaimedOnItsOwnSlot();
         Stress(1, false);
         Stress(1, true);
     }

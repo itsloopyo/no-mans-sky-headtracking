@@ -21,6 +21,11 @@ constexpr int kSlotSceneSample    = 1;
 constexpr int kSlotDataWatch      = 2;
 constexpr int kSlotCrosshairProbe = 3;
 
+// x86 has four of these and no more. The third-person commit site shares the
+// data-watch slot because that watch is a diagnostic nobody runs in play, and
+// camera_hook leaves the third-person site unarmed when the watch is on.
+constexpr int kSlotCommitThirdPerson = kSlotDataWatch;
+
 // Bit in DR6 that a hit on `slot` sets, for a handler to test and clear.
 constexpr std::uint64_t Dr6BitFor(int slot) { return 1ull << slot; }
 

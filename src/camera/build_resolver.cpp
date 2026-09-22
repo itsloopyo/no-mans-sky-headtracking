@@ -299,6 +299,58 @@ bool ResolveFovHelper(const Image& img, BuildProfile& p) {
 // that matters is the FIRST-PERSON behaviour's, and the way to say so across
 // builds is to resolve cGcCameraBehaviourFirstPerson from RTTI, take its slot
 // 4, and keep the gate whose .pdata primary entry is that function.
+// The gate inside `behaviour`'s slot 4, or kNotFound. Same rule the
+// first-person search below uses, factored out because the third-person
+// cameras need their own site on a build that inlines the write per behaviour.
+std::uint32_t GateInsideBehaviour(const Image& img, void* moduleBase,
+                                  const char* behaviour) {
+    VtableInfo vt{};
+    if (!FindVtableFromRTTI(moduleBase, behaviour, vt, 8) || vt.vfunc_count <= 4) {
+        return kNotFound;
+    }
+    const auto moduleAddr = reinterpret_cast<std::uintptr_t>(moduleBase);
+    const std::uint32_t wanted =
+        static_cast<std::uint32_t>(vt.vfuncs[4] - moduleAddr);
+
+    // cmp byte ptr [rax+0x4FF], 0
+    const std::uint8_t kGate[] = {0x80, 0xB8, 0xFF, 0x04, 0x00, 0x00, 0x00};
+    std::uint32_t at = img.text.rva;
+    while (true) {
+        at = FindBytes(img.text, kGate, sizeof(kGate), at);
+        if (at == kNotFound) break;
+        const std::uint32_t gate = at;
+        at = gate + 1;
+        const std::uint32_t jne = gate + sizeof(kGate);
+        if (img.Read<std::uint8_t>(jne) != 0x75) continue;  // jne rel8
+        const std::int8_t rel = img.Read<std::int8_t>(jne + 1);
+        const std::uint32_t target = static_cast<std::uint32_t>(jne + 2 + rel);
+        if (PrimaryEntry(img, target) != wanted) continue;
+        return target;
+    }
+    return kNotFound;
+}
+
+// The third-person cameras, on a build that inlines the commit into each
+// behaviour. cGcCameraBehaviourThirdPerson, PlayerThirdPerson and
+// SpacewalkThirdPerson share one slot-4 function on the Steam image, so the
+// first name that resolves carries all three. Absent on a build whose
+// behaviours call one shared writer: there cameraCommitRva already covers every
+// camera, and this stays zero.
+void ResolveThirdPersonCommitSite(const Image& img, void* moduleBase, BuildProfile& p) {
+    for (const char* behaviour : {"cGcCameraBehaviourThirdPerson",
+                                  "cGcCameraBehaviourPlayerThirdPerson",
+                                  "cGcCameraBehaviourSpacewalkThirdPerson"}) {
+        const std::uint32_t target = GateInsideBehaviour(img, moduleBase, behaviour);
+        if (target == kNotFound || target == p.cameraCommitRva) continue;
+        p.cameraCommitThirdPersonRva = target;
+        HT_LOG("Resolver: third-person camera commit at RVA 0x%08X, inside %s "
+               "slot 4.", target, behaviour);
+        return;
+    }
+    HT_LOG("Resolver: no third-person commit gate on this build, so the view "
+           "follows your head in first person only.");
+}
+
 bool ResolveCommitSite(const Image& img, void* moduleBase, BuildProfile& p) {
     VtableInfo fp{};
     if (!FindVtableFromRTTI(moduleBase, "cGcCameraBehaviourFirstPerson", fp, 8)) {
@@ -453,6 +505,7 @@ const BuildProfile* ResolveProfileFromImage(void* moduleBase, BuildProfile& out)
     if (!ResolveCameraManager(moduleBase, out)) return nullptr;
     if (!ResolveFovHelper(img, out)) return nullptr;
     if (!ResolveCommitSite(img, moduleBase, out)) return nullptr;
+    ResolveThirdPersonCommitSite(img, moduleBase, out);
 
     // The menu gate is not. Failing it costs the suppression that keeps the
     // head from swinging the view behind an open menu, which is worth saying

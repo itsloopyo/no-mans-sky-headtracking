@@ -245,6 +245,17 @@ struct BuildProfile {
     // which is only the newest commit when the camera is committed on the same
     // thread at a fixed point in the frame. Zero: the newest commit is used.
     std::uint32_t sceneSampleRva = 0;
+
+    // Second commit site, for the third-person cameras. The Steam image inlines
+    // the row write into each behaviour, so cameraCommitRva above is the
+    // FIRST-PERSON behaviour's copy and fires only while you are looking
+    // through your own eyes. cGcCameraBehaviourThirdPerson, PlayerThirdPerson
+    // and SpacewalkThirdPerson share one slot-4 function, so one more pin
+    // covers all three. Zero where it is not needed or not known: the GDK build
+    // routes every behaviour through one shared writer, which cameraCommitRva
+    // already pins, and an unpinned Steam build keeps the first-person-only
+    // behaviour it had.
+    std::uint32_t cameraCommitThirdPersonRva = 0;
 };
 
 // Selects the profile matching the running EXE, or nullptr if none match.

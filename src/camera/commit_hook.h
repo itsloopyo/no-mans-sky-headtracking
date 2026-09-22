@@ -21,7 +21,10 @@ namespace NMSHT {
 // there is nothing MinHook can attach to. It is trapped with an execution
 // hardware breakpoint instead, which is why it fires through a vectored handler
 // rather than a detour.
-void InstallCommitHook(std::uint32_t commitRva,
+// `thirdPersonCommitRva` is the second site, zero where the build needs none:
+// the Steam image inlines the write into each camera behaviour, so the first
+// site covers first person only and this one covers the third-person cameras.
+void InstallCommitHook(std::uint32_t commitRva, std::uint32_t thirdPersonCommitRva,
                        BuildProfile::CommitCameraReg cameraReg);
 
 // Frames that have reached the commit site.

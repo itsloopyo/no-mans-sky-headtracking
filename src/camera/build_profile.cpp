@@ -438,6 +438,14 @@ static const BuildProfile kGdkProfile_20260921 = {
     // against 4 px RMS and 15 px peaks from the newest commit. Hit in first and
     // third person alike.
     0x00516884u,
+    // cameraCommitThirdPersonRva - the same gate shape inside
+    // cGcCameraBehaviourThirdPerson slot 4 (0x0067D710), whose `jne` lands on
+    // 0x0067FBC6. PlayerThirdPerson and SpacewalkThirdPerson share that exact
+    // function, so this one address carries the on-foot third-person view, the
+    // spacewalk and the player third-person camera together. The camera is in
+    // RSI there, the same register the first-person site uses: both targets end
+    // `mov rcx, rsi` into the same call.
+    0x0067FBC6u,
 };
 
 // Xbox Game Pass (GDK) Win64 build, TimeDateStamp 0x6AA13600 (2026-09-09).
