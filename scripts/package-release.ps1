@@ -40,6 +40,11 @@ function New-ZipFromDirectory {
     }
 }
 
+# The committed manifest is the authoritative copy of the seeded ini, and the
+# blob inside the ZIP is a build product. Refreshing it here would ship a
+# correct ZIP over a stale committed file, so drift fails the build instead.
+Assert-ManifestSeedsMatchShipped -ManifestPath (Join-Path $projectRoot 'launcher-manifest.json') -ProjectRoot $projectRoot
+
 $manifest = Get-Content (Join-Path $projectRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json
 # mod_info.name is already the PascalCase AssemblyName used for the ZIP names.
 $modName  = $manifest.mod_info.name
