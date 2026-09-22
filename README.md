@@ -15,14 +15,9 @@ any OpenTrack compatible tracker, with no VR headset required.
 ## Requirements
 
 - [No Man's Sky](https://store.steampowered.com/app/275850/No_Mans_Sky/),
-  64-bit `Binaries\NMS.exe`. Where each store stands:
-  - **Steam**
+  64-bit `Binaries\NMS.exe` on a compatible store:
+  - **Steam** 
   - **Xbox Game Pass / Microsoft Store**
-  Each store ships a different build, and the mod matches the running `NMS.exe`
-  against the profiles it knows before hooking anything. A build it does not
-  recognise - a store it has no profile for, or a patch newer than the mod -
-  leaves it dormant and says so in `HeadTracking.log`, with the game running
-  exactly as it would without the mod installed.
 - A tracking source: [OpenTrack](https://github.com/opentrack/opentrack/releases)
   with a webcam or other supported device, or a phone app that sends the
   OpenTrack UDP protocol itself.
