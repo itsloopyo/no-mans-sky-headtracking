@@ -1,0 +1,48 @@
+[workspace]
+name = "no-mans-sky-head-tracking"
+version = "0.1.0"
+description = "Head tracking mod for No Man's Sky via OpenTrack UDP"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+update-submodule = "git submodule update --remote cameraunlock-core && powershell -NoProfile -ExecutionPolicy Bypass -File cameraunlock-core/scripts/update-submodule.ps1"
+sync = "git submodule update --remote cameraunlock-core"
+
+# No -G: let CMake auto-detect the installed Visual Studio generator. Pinning
+# "Visual Studio 17 2022" broke on CI once the windows runner image moved to
+# VS 2026 (VS 17 absent); auto-detect picks whatever VS the machine has.
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -A x64 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+build         = { cmd = "cmake --build build --config Debug",   depends-on = ["setup"] }
+build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+
+test = { cmd = "ctest --test-dir build -C Debug --output-on-failure", depends-on = ["build"] }
+
+# What CI runs, and it runs first: this task performs the setup -> build-release
+# chain and `package` then reuses that build. Release rather than Debug so the
+# runner is not made to build the tree twice.
+test-release = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
+
+deploy  = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Debug",   depends-on = ["build"] }
+install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
+
+detect-game = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/detect-game.ps1" }
+
+uninstall     = { cmd = "cmd /c scripts\\uninstall.cmd" }
+uninstall-all = { cmd = "cmd /c scripts\\uninstall.cmd --force" }
+
+clean     = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }" """ }
+clean-all = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }" """ }
+
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+# Shim-only mod: the DLL is itself the system-DLL proxy the game loads, so there
+# is no vendored loader to refresh. Kept as a no-op for parity with the rest of
+# the catalogue.
+update-deps = "powershell -NoProfile -Command \"Write-Host 'No vendored dependencies to update (shim-only mod).'\""
+
+[dependencies]

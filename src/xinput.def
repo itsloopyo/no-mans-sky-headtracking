@@ -1,0 +1,15 @@
+; Ordinals must match the genuine System32 XINPUT9_1_0.dll, which exports
+; DllMain @1 and the four XInput entry points @2..@5. Without this file the
+; linker assigns them alphabetically, shifting every ordinal by one and
+; leaving @5 undefined, so a module importing this DLL by ordinal calls the
+; wrong function or fails to load at all.
+;
+; @1 is deliberately left empty. The genuine DLL exports its own DllMain
+; there, nothing imports it, and exporting ours would let a caller run our
+; attach/detach path with arbitrary arguments.
+LIBRARY XINPUT9_1_0
+EXPORTS
+    XInputGetCapabilities           @2
+    XInputGetDSoundAudioDeviceGuids @3
+    XInputGetState                  @4
+    XInputSetState                  @5

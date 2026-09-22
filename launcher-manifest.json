@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "mod_info": {
+    "name": "NoMansSkyHeadTracking",
+    "version": "0.1.0",
+    "game_id": "no-mans-sky"
+  },
+  "strategy": "Shim",
+  "delivery_mode": "manifest",
+
+  "files": [
+    { "source": "plugins/XINPUT9_1_0.dll", "target": "Binaries/XINPUT9_1_0.dll", "backup": true }
+  ],
+
+  "runtime_requirements": [],
+  "dependencies": []
+}
