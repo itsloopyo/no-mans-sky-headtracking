@@ -148,7 +148,6 @@ Two equivalent binding sets, use whichever your keyboard has:
 |---------------------|-------------|-----------------|
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
-| Cycle ADS mode      | `Insert`    | `Ctrl+Shift+U`  |
 
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
@@ -157,24 +156,11 @@ Two equivalent binding sets, use whichever your keyboard has:
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
-`Insert` / `Ctrl+Shift+U` cycles what happens when you aim down sights. All
-three are meant to start the same way, with raising the sights swinging the view
-onto the point the reticle was marking so your shot lands where you had it lined
-up, and to differ in what happens for the rest of the aim:
+### Aiming down sights
 
-1. **Tracking paused** (default) - the game keeps the camera for as long as the
-   sights are up. The sight picture is exactly the game's, and head movement
-   does nothing until you lower the weapon.
-2. **Tracking on, with an aim marker** - head tracking carries on from the
-   snapped position, and a marker is drawn where your rounds will land.
-3. **Tracking on, no aim marker** - the same as 2 without the marker, for a
-   cleaner screen when you are happy reading the sights themselves.
-
-This build detects no aim state and draws no marker, so all three modes
-currently behave the same: head tracking carries on at the sights exactly as it
-does at the hip. The key still cycles and the choice is saved to
-`HeadTracking.ini`, so it survives a restart. The mode you switch to is written
-to `HeadTracking.log`; nothing is drawn on screen.
+Head tracking stays on while you aim. The weapon stays where your mouse or
+controller points it, so with your head turned it sits off to one side with its
+sights still lined up, and your rounds land where those sights point.
 
 ## Configuration
 
@@ -220,20 +206,11 @@ InvertY=false
 ; turning it on also swaps the travel budgets to 0.10m forward and 0.40m back.
 InvertZ=false
 
-[ADS]
-; What head tracking does while the sights are up. Cycled in game with Insert
-; or Ctrl+Shift+U, which writes the new value back here.
-;   paused  - tracking stands down for as long as the sights are up.
-;   marker  - tracking stays live and an aim marker is drawn.
-;   tracked - tracking stays live, nothing drawn.
-Mode=paused
-
 [Hotkeys]
-; Virtual key codes (hex). End=0x23, PageUp=0x21, Insert=0x2D.
-; Ctrl+Shift+Y/G/U chord alternatives are also registered.
+; Virtual key codes (hex). End=0x23, PageUp=0x21.
+; Ctrl+Shift+Y/G chord alternatives are also registered.
 ToggleKey=0x23
 CycleModeKey=0x21
-AdsModeKey=0x2D
 
 [General]
 AutoEnable=true
@@ -276,6 +253,9 @@ each is commented in the file the installer writes.
   `InvertRoll`. For a lean that goes the wrong way, use `[Position] InvertX` or
   `InvertY`. `InvertZ` is for a tracker that sends depth backwards, and it
   swaps the forward and backward travel limits with it.
+- **The weapon is off to one side when I aim down sights.** Your head is
+  turned: the weapon stays on your aim and you are looking past it. Turn back to
+  it, or move your aim to where you are looking.
 - **Filing a bug report.** Set `[Debug] Diagnostics=true` in `HeadTracking.ini`,
   relaunch, reproduce, and attach `HeadTracking.log`.
 

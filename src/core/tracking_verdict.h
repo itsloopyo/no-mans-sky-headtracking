@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cameraunlock/ads/ads_mode.h>
-
 namespace NMSHT {
 
 // Everything the tracking-state walk reads, sampled once so the verdict is a
@@ -21,32 +19,17 @@ struct TrackingInputs {
     bool menuUp = false;
     // cGcGenericSectionConditionInMultiplayer's answer.
     bool multiplayer = false;
-    // The game's own weapon-zoom state, polled fresh this frame.
-    bool aiming = false;
-    cameraunlock::ads::AdsMode adsMode = cameraunlock::ads::kDefaultAdsMode;
 };
 
 struct TrackingVerdict {
     // Why the head pose is standing down, or nullptr when nothing is in its way.
     const char* reason = nullptr;
-    // The sights are up. Reported in every mode, including `paused` where the
-    // pose is on its way to nothing: the reason says whether tracking applies,
-    // this says whether the sights are up, and the frame code needs both.
-    bool aiming = false;
     // The head pose still reaches the camera this frame.
     bool poseApplies = false;
 };
 
-// ADS is tested LAST, so a menu, a loading screen or another explorer in the
-// session still reports its own reason when both are true at once, and every
-// earlier return leaves `aiming` false rather than leaking a stale flag into
-// the render-side code.
-//
-// The ADS branch names a reason without taking the pose away. This mod keeps
-// writing the camera through the aim and lets AdsFade run the pose down to
-// nothing over kLowerMs; a gate that stopped the writes on the first aiming
-// frame would cut the pose in one frame, which is the jolt the fade exists to
-// remove. Every other reason is a real suppression and takes the pose with it.
+// Aiming down sights is deliberately absent: head tracking carries straight on
+// through the aim, so the sights being up is never a reason to stand down.
 inline TrackingVerdict EvaluateTracking(const TrackingInputs& in) {
     TrackingVerdict v;
     if (!in.fsmLocated) {
@@ -70,11 +53,7 @@ inline TrackingVerdict EvaluateTracking(const TrackingInputs& in) {
         return v;
     }
 
-    v.aiming = in.aiming;
     v.poseApplies = true;
-    if (in.aiming && cameraunlock::ads::AdsSuspendsTracking(in.adsMode)) {
-        v.reason = "aiming down sights";
-    }
     return v;
 }
 

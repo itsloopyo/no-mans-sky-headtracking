@@ -18,7 +18,7 @@ WeaponCameraFn g_original = nullptr;
 // at its own narrower field of view - magnifies that offset into the gun
 // visibly swinging faster than the world.
 float* WeaponCameraDetour(void* manager) {
-    return CleanCameraForTransform(g_original(manager));
+    return WeaponCameraForTransform(g_original(manager));
 }
 
 }

@@ -26,7 +26,6 @@ struct GameStateOffsets {
     std::uint32_t netPlayerSlotsEnd;
     std::uint32_t netPlayerConnectedByte;
     std::uint32_t menuPageModeOffset;
-    std::uint32_t weaponZoomOffset;
     std::uint32_t playerFromGlobals;
     std::uint32_t playerShipRva;
 };
@@ -45,23 +44,11 @@ bool IsInGameplay();
 // one verdict's gate with another's reason - which is how the log came to name a
 // cause that never happened.
 //
-// `reason` is non-null whenever the pose is standing down. It can ALSO be
-// non-null while the return is true: aiming down sights names a reason without
-// taking the pose away. So test the return value, never the reason.
+// `reason` is non-null whenever the pose is standing down.
 bool TrackingApplies(const char*& reason);
-
-// True while the multi-tool's weapon zoom is up - the game's own aim-down-sights
-// state, polled fresh on every call rather than latched off an enter/exit edge.
-// An unreadable frame, or a build with no pinned offset, reports "not aiming":
-// failing toward stock ADS is the safe direction.
-bool IsAimingDownSights();
 
 bool GetWalkingUp(float up[3]);
 bool IsInShip();
-
-// Recomputes the verdict now instead of waiting for the next poll, so an ADS
-// mode change made mid-aim takes effect on that aim rather than the next one.
-void RefreshTrackingVerdict();
 
 // Name of the state class the FSM currently holds, or "unresolved".
 const char* CurrentStateName();

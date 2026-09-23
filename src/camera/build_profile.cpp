@@ -61,7 +61,6 @@ static const BuildProfile kSteamProfile_20260618 = {
     0x00904728u,   // netPlayerSlotsEnd
     0x00009290u,   // netPlayerConnectedByte
     0x008467A8u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x001C1E10u,   // nguiFindElementRva
     0x00905FD2u,   // reticleLookupReturnRva
     0x05637610u,   // gfxManagerPtrRva
@@ -128,7 +127,6 @@ static const BuildProfile kSteamProfile_20260910 = {
     0x00000000u,   // netPlayerSlotsEnd
     0x00000000u,   // netPlayerConnectedByte
     0x008653F8u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x00000000u,   // nguiFindElementRva
     0x00000000u,   // reticleLookupReturnRva
     0x05918850u,   // gfxManagerPtrRva
@@ -197,7 +195,6 @@ static const BuildProfile kSteamProfile_20260921 = {
     0x00000000u,   // netPlayerSlotsEnd
     0x00000000u,   // netPlayerConnectedByte
     0x00865418u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x001CB2A0u,   // nguiFindElementRva
     0x0098F9A1u,   // reticleLookupReturnRva
     0x05911B70u,   // gfxManagerPtrRva
@@ -276,7 +273,6 @@ static const BuildProfile kSteamProfile_20260917 = {
     0x00000000u,   // netPlayerSlotsEnd
     0x00000000u,   // netPlayerConnectedByte
     0x00865418u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x001CB290u,   // nguiFindElementRva
     0x0098FF61u,   // reticleLookupReturnRva
     0x05909440u,   // gfxManagerPtrRva
@@ -414,7 +410,6 @@ static const BuildProfile kGdkProfile_20260921 = {
     0x00000000u,   // netPlayerSlotsEnd
     0x00000000u,   // netPlayerConnectedByte
     0x00865458u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x003B9770u,   // nguiFindElementRva
     0x00B1840Fu,   // reticleLookupReturnRva
     0x05CA76B8u,   // gfxManagerPtrRva
@@ -505,7 +500,6 @@ static const BuildProfile kGdkProfile_20260909 = {
     0x00000000u,   // netPlayerSlotsEnd
     0x00000000u,   // netPlayerConnectedByte
     0x00865488u,   // menuPageModeOffset
-    0x00000000u,   // weaponZoomOffset
     0x00000000u,   // nguiFindElementRva
     0x00000000u,   // reticleLookupReturnRva
     0x05CAA4D8u,   // gfxManagerPtrRva

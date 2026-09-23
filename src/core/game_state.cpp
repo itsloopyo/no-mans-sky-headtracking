@@ -1,14 +1,12 @@
 #include "pch.h"
 #include "game_state.h"
 
-#include "ads.h"
 #include "debug_log.h"
 #include "mod.h"
 #include "tracking_verdict.h"
 
 #include <atomic>
 #include <cmath>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -68,9 +66,9 @@ std::atomic<int> g_menuPage{0};
 // The gate and the reason for it, published together.
 //
 // They are read as a SET on the commit thread - "if not in gameplay, log why" -
-// and written from two threads: the 100 ms poll loop and the ADS hotkey. Two
-// separate stores let a frame pair one verdict's gate with another's reason and
-// name the wrong cause in the log.
+// and written by the 100 ms poll loop. Two separate stores would let a frame
+// pair one verdict's gate with another's reason and name the wrong cause in the
+// log.
 //
 // Published by POINTER into a ring, not as an atomic struct. A
 // std::atomic<Verdict> of these two fields is 16 bytes, and MSVC does not make a
@@ -96,13 +94,10 @@ static_assert(std::atomic<const Verdict*>::is_always_lock_free,
               "the commit thread reads this from inside an exception handler, so "
               "it must never take a lock");
 
-// Serialised because the poll thread and the hotkey thread both publish, and at
-// 10 Hz plus a keypress there is nothing to contend for.
-std::mutex g_verdictMutex;
+// Only the poll thread publishes.
 int g_verdictNext = 1;
 
 void PublishVerdictValue(bool poseApplies, const char* reason) {
-    std::lock_guard<std::mutex> lock(g_verdictMutex);
     Verdict* const slot = &g_verdictSlots[g_verdictNext];
     g_verdictNext = (g_verdictNext + 1) % kVerdictSlots;
     slot->poseApplies = poseApplies;
@@ -110,19 +105,7 @@ void PublishVerdictValue(bool poseApplies, const char* reason) {
     g_verdict.store(slot, std::memory_order_release);
 }
 
-// Address of the engine's weapon-zoom byte, published once the global block has
-// resolved and the byte has been validated as readable. The render thread reads
-// the aim state every frame, so it dereferences this rather than re-walking the
-// block pointer and calling VirtualQuery on the hot path. Zero until the block
-// exists, which reads as "not aiming".
-std::atomic<uintptr_t> g_aimFlag{0};
-
 GameStateOffsets g_offsets{};
-
-// The last sampled inputs the verdict walk needs, so RefreshTrackingVerdict can
-// re-run it off the poll thread's cadence.
-std::atomic<long> g_lastSelected{-1};
-std::atomic<bool> g_lastMultiplayer{false};
 
 // How often the poll thread re-reads the FSM slot and the two gates.
 constexpr DWORD kPollIntervalMs = 100;
@@ -285,38 +268,7 @@ int MenuPageMode(uintptr_t base) {
 
 bool MenuIsUp(int page) { return page != 0 && page != 2; }
 
-// Resolves the weapon-zoom byte's address once the block is up. Called from the
-// poll thread, never from the render thread.
-void PublishAimFlag(uintptr_t base) {
-    if (g_offsets.weaponZoomOffset == 0) return;
-
-    // Re-checked every poll rather than validated once and trusted for the life
-    // of the process: the render thread dereferences this on every committed
-    // frame, and a block the engine has torn down would fault inside the camera
-    // commit. This NARROWS that window to one poll interval, it does not close
-    // it - the check and the render thread's read are 100 ms apart at worst.
-    const uintptr_t p = base == 0 ? 0 : base + g_offsets.weaponZoomOffset;
-    const uintptr_t live = (p != 0 && ReadableLive(p, 1)) ? p : 0;
-    const uintptr_t was = g_aimFlag.exchange(live, std::memory_order_relaxed);
-    if (was == live) return;
-    // Edge-latched. GameGlobals() reads 0 across every load and teardown, so an
-    // unlatched log here writes a line at up to 10 Hz while the block comes and
-    // goes.
-    static bool s_saidLost = false;
-    if (live != 0) {
-        s_saidLost = false;
-        HT_LOG("ADS: weapon-zoom state at 0x%p (block + 0x%08X).",
-               reinterpret_cast<void*>(live), g_offsets.weaponZoomOffset);
-    } else if (!s_saidLost) {
-        s_saidLost = true;
-        HT_LOG("ADS: the weapon-zoom state at 0x%p is no longer readable; "
-               "reporting not-aiming until it comes back.",
-               reinterpret_cast<void*>(was));
-    }
-}
-
-// The verdict, from one sampled view of the game. Split out so the ADS hotkey
-// can re-run it immediately instead of riding the 100 ms poll.
+// The verdict, from one sampled view of the game.
 void PublishVerdict(int selectedCandidate, int stateIndex, int page, bool multiplayer) {
     TrackingInputs in;
     in.fsmLocated = selectedCandidate >= 0;
@@ -325,8 +277,6 @@ void PublishVerdict(int selectedCandidate, int stateIndex, int page, bool multip
     in.stateName = stateIndex >= 0 ? g_states[stateIndex].className : nullptr;
     in.menuUp = MenuIsUp(page);
     in.multiplayer = multiplayer;
-    in.aiming = IsAimingDownSights();
-    in.adsMode = Ads::Instance().Mode();
 
     const TrackingVerdict v = EvaluateTracking(in);
     PublishVerdictValue(v.poseApplies, v.reason);
@@ -465,9 +415,6 @@ void PollThread() {
         const int idx = sel >= 0 ? g_candidates[sel].lastState : -1;
         g_currentState.store(idx, std::memory_order_relaxed);
 
-        PublishAimFlag(globals);
-        g_lastSelected.store(sel, std::memory_order_relaxed);
-        g_lastMultiplayer.store(multiplayer, std::memory_order_relaxed);
         PublishVerdict(static_cast<int>(sel), idx, page, multiplayer);
 
         Sleep(kPollIntervalMs);
@@ -505,12 +452,6 @@ void InstallGameStateProbe(const GameStateOffsets& offsets) {
     if (g_offsets.gameGlobalsPtrRva == 0) {
         HT_LOG("Game state: no global block pinned for this build - the menu and "
                "multiplayer gates are inactive.");
-    }
-    if (g_offsets.weaponZoomOffset == 0) {
-        HT_LOG("ADS: no weapon-zoom offset pinned for this build, so the aim state "
-               "reports 'not aiming' on every frame and head tracking behaves at "
-               "the sights exactly as it does at the hip. The ADS mode cycle is "
-               "live and saved; it has nothing to act on yet.");
     }
 
     if (g_offsets.appStateSlotRva != 0) {
@@ -588,19 +529,6 @@ bool GetWalkingUp(float up[3]) {
     const float inverseLength = 1.0f / std::sqrt(lengthSquared);
     for (int i = 0; i < 3; ++i) up[i] = bodyUp[i] * inverseLength;
     return true;
-}
-
-bool IsAimingDownSights() {
-    const uintptr_t p = g_aimFlag.load(std::memory_order_relaxed);
-    if (p == 0) return false;
-    return *reinterpret_cast<const volatile unsigned char*>(p) != 0;
-}
-
-void RefreshTrackingVerdict() {
-    const long sel = g_lastSelected.load(std::memory_order_relaxed);
-    const int idx = g_currentState.load(std::memory_order_relaxed);
-    PublishVerdict(static_cast<int>(sel), idx, g_menuPage.load(std::memory_order_relaxed),
-                   g_lastMultiplayer.load(std::memory_order_relaxed));
 }
 
 const char* CurrentStateName() {

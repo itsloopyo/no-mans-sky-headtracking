@@ -16,7 +16,6 @@
 #include "reticle.h"
 #include "screen_projection.h"
 #include "caller_table.h"
-#include "core/ads.h"
 #include "core/debug_log.h"
 #include "core/game_state.h"
 #include "core/mod.h"
@@ -742,15 +741,12 @@ void LogVtable(void* moduleBase, const char* className, int entries) {
     }
 }
 
-// What every frame that will not apply a pose has to do. Re-arming the ADS
-// entry pose is the point: the next aim starts clean rather than resuming
-// against a pose captured before the suppression.
+// What every frame that will not apply a pose has to do.
 void StandDown() {
     g_appliedDiffers.store(false, std::memory_order_release);
     g_appliedPub.store(nullptr, std::memory_order_release);
     g_pairPub.store(nullptr, std::memory_order_release);
     g_scenePair.store(nullptr, std::memory_order_release);
-    Ads::Instance().Reset();
 }
 
 // Edge-triggered, so a suppression that lasts a whole loading screen leaves one
@@ -784,31 +780,15 @@ void NoteNoPose() {
            "or set [General] AutoEnable=true.");
 }
 
-// This frame's head pose, run through the aim-down-sights pipeline. False when
-// the pipeline has nothing to give.
-//
-// The pose the camera gets is the faded one, so raising the sights eases the
-// head off the aim over AdsFade::kLowerMs instead of cutting it, and the tracked
-// modes carry on from the frame the sights came up on. `aiming` is polled from
-// the game's own weapon-zoom state every frame, never derived from the tracking
-// verdict: in `paused` the fade is what puts the ADS reason in that verdict, so
-// feeding it back would make the transition oscillate for as long as the sights
-// stayed up.
-bool AcquirePose(AdsPipeline::Pose& pose, bool& havePosition) {
+// This frame's head pose. False when the tracker has nothing to give.
+bool AcquirePose(AppliedPose& pose, bool& havePosition) {
     float yaw, pitch, roll;
     if (!Mod::Instance().GetProcessedRotation(yaw, pitch, roll)) return false;
 
     float px = 0.0f, py = 0.0f, pz = 0.0f;
     havePosition = Mod::Instance().GetPositionOffset(px, py, pz);
 
-    AdsPipeline::Pose absolute;
-    absolute.pitch = pitch;
-    absolute.yaw   = yaw;
-    absolute.roll  = roll;
-    absolute.x = px;
-    absolute.y = py;
-    absolute.z = pz;
-    pose = Ads::Instance().Frame(IsAimingDownSights(), true, absolute);
+    pose = { yaw, pitch, roll, px, py, pz };
     return true;
 }
 
@@ -943,7 +923,7 @@ void OnRenderPhaseBegin(void* committedCamera) {
     }
     NoteGameplayResumed();
 
-    AdsPipeline::Pose pose;
+    AppliedPose pose;
     bool havePosition = false;
     if (!AcquirePose(pose, havePosition)) {
         NoteNoPose();
@@ -1076,6 +1056,25 @@ float* CleanCameraForTransform(float* transform) {
     std::memcpy(dst, transform, sizeof(t_cleanObjects[0]));
     CopyTransform(dst, clean);
     CopyTransform(dst + g_renderRowsFloats, clean);
+    return dst;
+}
+
+float* WeaponCameraForTransform(float* transform) {
+    const CameraPair* const pair = g_pairPub.load(std::memory_order_acquire);
+    if (transform != g_liveTransform || pair == nullptr) return transform;
+    float rows[kTransformFloats];
+    CopyTransform(rows, pair->clean);
+    rows[12] = pair->applied[12];
+    rows[13] = pair->applied[13];
+    rows[14] = pair->applied[14];
+    float* const dst = t_cleanObjects[t_cleanObjectTurn++ % kCleanObjectSlots];
+    if (g_renderRowsFloats == 0) {
+        CopyTransform(dst, rows);
+        return dst;
+    }
+    std::memcpy(dst, transform, sizeof(t_cleanObjects[0]));
+    CopyTransform(dst, rows);
+    CopyTransform(dst + g_renderRowsFloats, rows);
     return dst;
 }
 
@@ -1363,7 +1362,6 @@ void CameraHook::Install() {
     gs.netPlayerSlotsEnd = profile->netPlayerSlotsEnd;
     gs.netPlayerConnectedByte = profile->netPlayerConnectedByte;
     gs.menuPageModeOffset = profile->menuPageModeOffset;
-    gs.weaponZoomOffset = profile->weaponZoomOffset;
     gs.playerFromGlobals = profile->playerFromGlobals;
     gs.playerShipRva = profile->playerShipRva;
     InstallGameStateProbe(gs);

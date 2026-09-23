@@ -159,13 +159,6 @@ struct BuildProfile {
     // walked the value 0 -> 3 -> 4 -> 5 -> 0 across an open and close.
     std::uint32_t menuPageModeOffset;
 
-    // Byte in that block that is non-zero while the multi-tool's weapon zoom is
-    // up - the game's own aim-down-sights state. Zero leaves the ADS cycle
-    // reporting "not aiming" on every frame, which is stock behaviour: failing
-    // toward the unmodded game is the safe direction for a build whose aim
-    // state has not been located.
-    std::uint32_t weaponZoomOffset;
-
     // RVA of cTkNGui's by-name element lookup, and the return address of the
     // one call site in the HUD that passes it the RETICLE layer. The crosshair
     // element is never stored anywhere reachable - the HUD looks it up afresh

@@ -95,25 +95,6 @@ int ReadHotkey(const cameraunlock::IniReader& ini, const char* key, int fallback
     return fallback;
 }
 
-// An unknown value is the DEFAULT, not whichever branch happens to be last -
-// that covers a typo in a hand-edited file and is also the migration path for a
-// mode renamed since an older release wrote the setting. ParseAdsMode already
-// does the falling back; this exists to say so in the log, because a player who
-// typed `off` and got stock ADS deserves to know the file was not read the way
-// they meant it.
-cameraunlock::ads::AdsMode ReadAdsMode(const cameraunlock::IniReader& reader,
-                                              cameraunlock::ads::AdsMode fallback) {
-    const std::string raw = guards::ReadRawValue(reader, "ADS", "Mode");
-    if (raw.empty()) return fallback;
-
-    const cameraunlock::ads::AdsMode parsed = cameraunlock::ads::ParseAdsMode(raw.c_str());
-    if (_stricmp(raw.c_str(), cameraunlock::ads::AdsModeValue(parsed)) != 0) {
-        HT_LOG("config: [ADS] Mode=%s is not one of paused/marker/tracked - using %s.",
-               raw.c_str(), cameraunlock::ads::AdsModeValue(parsed));
-    }
-    return parsed;
-}
-
 }  // namespace
 
 bool Config::LoadFromIni(const std::string& path) {
@@ -171,13 +152,9 @@ bool Config::LoadFromIni(const std::string& path) {
     // Reticle
     reticleFollowsAim = ReadBool(r, "Reticle", "FollowAim", reticleFollowsAim);
 
-    // ADS
-    adsMode = ReadAdsMode(r, adsMode);
-
     // Hotkeys
     toggleKey    = ReadHotkey(r, "ToggleKey",    toggleKey);
     cycleModeKey = ReadHotkey(r, "CycleModeKey", cycleModeKey);
-    adsModeKey   = ReadHotkey(r, "AdsModeKey",   adsModeKey);
 
     // General
     autoEnable = ReadBool(r, "General", "AutoEnable", autoEnable);
@@ -245,22 +222,9 @@ bool Config::WriteDefault(const std::string& path) const {
     w.WriteBool("FollowAim", reticleFollowsAim);
     w.WriteBlankLine();
 
-    w.WriteSection("ADS");
-    w.WriteComment(" What head tracking does while the sights are up. Cycled in game with");
-    w.WriteComment(" Insert or Ctrl+Shift+U, which writes the new value back here.");
-    w.WriteComment("   paused  - tracking stands down for as long as the sights are up.");
-    w.WriteComment("   marker  - tracking stays live and an aim marker is drawn.");
-    w.WriteComment("   tracked - tracking stays live, nothing drawn.");
-    w.WriteComment(" This build does not yet know when your sights are up, and draws no");
-    w.WriteComment(" marker, so all three modes currently behave the same. The missing");
-    w.WriteComment(" weapon-zoom address is named in the log.");
-    w.WriteString("Mode", cameraunlock::ads::AdsModeValue(adsMode));
-    w.WriteBlankLine();
-
     w.WriteSection("Hotkeys");
     w.WriteHex("ToggleKey",    toggleKey);
     w.WriteHex("CycleModeKey", cycleModeKey);
-    w.WriteHex("AdsModeKey",   adsModeKey);
     w.WriteBlankLine();
 
     w.WriteSection("General");

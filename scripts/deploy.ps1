@@ -78,8 +78,7 @@ foreach ($gamePath in $gamePaths) {
 
     # Write-if-absent, the same rule install.cmd applies through MOD_SEED_FILES.
     # A -Force copy here blew away whatever was in the game folder on every
-    # deploy, including the [ADS] Mode the mod itself writes back on the hotkey
-    # and any smoothing or limits tuned to test the build going in.
+    # deploy, including any smoothing or limits tuned to test the build going in.
     $deployedConfig = Join-Path $exeDir 'HeadTracking.ini'
     $seededConfig = -not (Test-Path $deployedConfig)
     if ($seededConfig) {

@@ -28,7 +28,6 @@ add_library(NoMansSkyHeadTracking SHARED
     src/dllmain.cpp
     src/xinput_proxy.cpp
     src/core/mod.cpp
-    src/core/ads.cpp
     src/core/config.cpp
     src/core/early_diag.cpp
     src/core/game_state.cpp
@@ -83,15 +82,14 @@ if(MSVC)
     target_compile_options(NoMansSkyHeadTracking PRIVATE /W4 /WX /MP /wd4324 /EHa)
 endif()
 
-# Tests. Every suite runs without NMS: the ADS pose pipeline, the
-# tracking-state verdict walk and the camera maths are deliberately free of
-# game, clock and logging, so an entire aim can be driven frame by frame here.
+# Tests. Every suite runs without NMS: the tracking-state verdict walk and the
+# camera maths are deliberately free of game, clock and logging.
 enable_testing()
 
 # Per-config output directory. With one shared path the two configurations
 # write the same .exe, so a Release package followed by `ctest -C Debug` runs
 # Release binaries under a Debug label.
-foreach(nmsht_test ads_pose_test state_gate_test udp_recovery_test camera_math_test
+foreach(nmsht_test state_gate_test udp_recovery_test camera_math_test
                    aim_projection_test)
     add_executable(${nmsht_test} tests/${nmsht_test}.cpp)
     set_target_properties(${nmsht_test} PROPERTIES

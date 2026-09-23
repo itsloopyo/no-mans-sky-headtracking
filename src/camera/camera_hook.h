@@ -125,6 +125,13 @@ void UnfreezeAppliedRows();
 
 float* CleanCameraForTransform(float* transform);
 
+// The camera the weapon is placed from: the clean basis, so the weapon stays on
+// the aim, at the LEANED eye. The weapon hangs about half a metre in front of
+// the eye, so placing it at the clean eye would let a lean throw it most of the
+// way across the frame and take its sights off the eye; riding with the eye it
+// keeps its place in the frame while the lean parallaxes the world past it.
+float* WeaponCameraForTransform(float* transform);
+
 // The vertical field of view, in degrees, that the engine is rendering with
 // right now, or 0 before the live camera has been located or on a build whose
 // profile pins no FOV scale.

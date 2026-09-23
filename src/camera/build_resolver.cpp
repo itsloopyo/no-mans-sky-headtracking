@@ -537,7 +537,7 @@ const BuildProfile* ResolveProfileFromImage(void* moduleBase, BuildProfile& out)
 
     // Left at zero on purpose, each because zero is a behaviour this mod
     // already ships somewhere rather than a broken state: no accessor
-    // substitution (aim follows the view), no reticle correction, no ADS state,
+    // substitution (aim follows the view), no reticle correction,
     // no multiplayer gate, no debug camera-global probe.
     return &out;
 }

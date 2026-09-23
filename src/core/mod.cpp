@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "mod.h"
-#include "ads.h"
 #include "debug_log.h"
 
 #include "camera/camera_hook.h"
@@ -40,8 +39,7 @@ bool Mod::Initialize(HMODULE hModule) {
     HT_LOG("=== %s v%s ===", kModName, kModVersion);
     HT_LOG("Initialize: dir=%s", m_gameDir.c_str());
     if (!iniAvailable) {
-        HT_LOG("WARN: could not write %s; settings and the ADS mode will not "
-               "persist.", iniPath.c_str());
+        HT_LOG("WARN: could not write %s; settings will not persist.", iniPath.c_str());
     }
     if (!configLoaded) {
         HT_LOG("WARN: could not read %s - using built-in defaults.", iniPath.c_str());
@@ -98,8 +96,6 @@ bool Mod::Initialize(HMODULE hModule) {
     } else {
         HT_LOG("UDP receiver started on port %u.", m_config.udpPort);
     }
-
-    Ads::Instance().Initialize(iniPath, m_config.adsMode);
 
     m_hotkeys.Start(m_config);
 

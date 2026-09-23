@@ -28,8 +28,6 @@
 
 #include "core/config.h"
 
-#include <cameraunlock/ads/ads_mode.h>
-
 #include <windows.h>
 
 #include <cmath>
@@ -151,14 +149,11 @@ void InlineCommentsSurviveOnEveryType(const std::string& path) {
     Check(Load(path,
                "[General]\nAutoEnable=false ; off for now\n"
                "[Position]\nLimitZ=0.25 ; a shorter lean\n"
-               "[ADS]\nMode=tracked ; keep looking around\n"
                "[Hotkeys]\nToggleKey=0x24 ; Home\n",
                c),
           "the ini loads");
     Check(c.autoEnable == false, "a bool with a trailing comment is still read");
     Check(c.posLimitZ == 0.25f, "a float with a trailing comment is still read");
-    Check(c.adsMode == cameraunlock::ads::AdsMode::Tracked,
-          "an ADS mode with a trailing comment is still read");
     Check(c.toggleKey == 0x24, "a hotkey with a trailing comment is still read");
 }
 
@@ -174,15 +169,21 @@ void UnpollableHotkeysKeepTheDefault(const std::string& path) {
     Check(c.cycleModeKey == 0x21,
           "Shift keeps the Page Up default - the modifiers belong to the chord guard");
 
-    Check(Load(path, "[Hotkeys]\nAdsModeKey=0x2E\n", c), "the ini loads");
-    Check(c.adsModeKey == 0x2E, "a bindable key is taken as written");
+    Check(Load(path, "[Hotkeys]\nCycleModeKey=0x2E\n", c), "the ini loads");
+    Check(c.cycleModeKey == 0x2E, "a bindable key is taken as written");
 }
 
-void AnUnknownAdsModeLandsOnTheDefault(const std::string& path) {
+// Configs already on disk still carry [ADS] Mode and [Hotkeys] AdsModeKey from
+// the retired ADS cycle. They must load without complaint and move nothing.
+void TheRetiredAdsKeysAreIgnored(const std::string& path) {
     NMSHT::Config c;
-    Check(Load(path, "[ADS]\nMode=off\n", c), "the ini loads");
-    Check(c.adsMode == cameraunlock::ads::kDefaultAdsMode,
-          "an unknown ADS mode lands on the default, not on whichever branch is last");
+    Check(Load(path,
+               "[ADS]\nMode=paused\n"
+               "[Hotkeys]\nAdsModeKey=0x2D\nToggleKey=0x2E\n",
+               c),
+          "an ini carrying the retired ADS keys still loads");
+    Check(c.toggleKey == 0x2E, "the keys around them are still read");
+    Check(c.cycleModeKey == 0x21, "and the rest keep their defaults");
 }
 
 void AMissingFileIsReported(const std::string& path) {
@@ -212,10 +213,6 @@ void ARoundTripOfTheWrittenDefaultsReadsBackIdentical(const std::string& path) {
     written.posLimitYDown = 0.11f;
     written.toggleKey = 0x2E;
     written.cycleModeKey = 0x2D;
-    // Not 0x24: VK_HOME is one of the two bindings the doctrine keeps
-    // permanently free, and this case writes its value into a real ini.
-    written.adsModeKey = 0x2F;
-    written.adsMode = cameraunlock::ads::AdsMode::Tracked;
     written.autoEnable = false;
     written.diagnostics = true;
     written.reticleFollowsAim = false;
@@ -234,8 +231,6 @@ void ARoundTripOfTheWrittenDefaultsReadsBackIdentical(const std::string& path) {
     Check(read.posLimitYDown == written.posLimitYDown, "downward lean limit survives");
     Check(read.toggleKey == written.toggleKey, "toggle key survives");
     Check(read.cycleModeKey == written.cycleModeKey, "cycle key survives");
-    Check(read.adsModeKey == written.adsModeKey, "ADS key survives");
-    Check(read.adsMode == written.adsMode, "ADS mode survives");
     Check(read.autoEnable == written.autoEnable, "AutoEnable survives");
     Check(read.diagnostics == written.diagnostics, "Diagnostics survives");
     Check(read.reticleFollowsAim == written.reticleFollowsAim,
@@ -259,7 +254,7 @@ int main() {
     ADecimalCommaIsRejectedNotSilentlyRead(path);
     InlineCommentsSurviveOnEveryType(path);
     UnpollableHotkeysKeepTheDefault(path);
-    AnUnknownAdsModeLandsOnTheDefault(path);
+    TheRetiredAdsKeysAreIgnored(path);
     ARoundTripOfTheWrittenDefaultsReadsBackIdentical(path);
     AMissingFileIsReported(path);
 

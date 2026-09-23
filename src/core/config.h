@@ -2,7 +2,6 @@
 
 #include <string>
 
-#include <cameraunlock/ads/ads_mode.h>
 #include <cameraunlock/data/position_settings.h>
 #include <cameraunlock/math/smoothing_utils.h>
 
@@ -44,15 +43,9 @@ struct Config {
     // shot the moment the head turns. Off restores the stock crosshair.
     bool reticleFollowsAim = true;
 
-    // What head tracking does while the sights are up. Validated against the
-    // shared value list, so an unknown string lands on the default rather than
-    // on whichever branch happens to be last.
-    cameraunlock::ads::AdsMode adsMode = cameraunlock::ads::kDefaultAdsMode;
-
     // Hotkeys (virtual key codes)
     int toggleKey     = 0x23; // End
     int cycleModeKey  = 0x21; // PageUp
-    int adsModeKey    = 0x2D; // Insert
 
     // General
     bool autoEnable = true;
