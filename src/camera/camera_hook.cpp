@@ -113,6 +113,7 @@ constexpr int kSweepCount = static_cast<int>(sizeof(kSweepCandidates) /
 constexpr DWORD kSweepHoldMs = 4000;
 std::atomic<std::uint32_t> g_sweepCurrent{0};
 std::atomic<uint64_t> g_sweepHits{0};
+std::atomic<bool> g_sweepFreeze{false};
 
 // Every distinct return address that reaches the camera accessor, with a hit
 // count. A profile's aim callers are return addresses in THIS image, and on a
@@ -808,17 +809,11 @@ void MirrorCleanToCycledGlobal(const float* clean) {
 
 }  // namespace
 
-// Ctrl+Shift+J, the spare in the fixed chord cluster. Asking the player to QUIT
-// when it looks right cannot work: quitting a game takes seconds and the sweep
-// has moved on by the time the process dies. Pressing a key is instant, so the
-// candidate under the player's eye at the moment they react is the one recorded.
-bool SweepFreezePressed() {
-    return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 &&
-           (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
-           (GetAsyncKeyState('J') & 0x8000) != 0;
-}
+void RequestSweepFreeze() { g_sweepFreeze.store(true, std::memory_order_relaxed); }
 
 void SweepThread() {
+    // A press before the first candidate is served names no candidate.
+    g_sweepFreeze.store(false, std::memory_order_relaxed);
     for (int i = 0;; i = (i + 1) % kSweepCount) {
         g_sweepHits.store(0, std::memory_order_relaxed);
         g_sweepHits.store(0, std::memory_order_relaxed);
@@ -826,7 +821,7 @@ void SweepThread() {
         HT_LOG("Aim sweep %d/%d: the CLEAN camera now goes to 0x%08X.",
                i + 1, kSweepCount, kSweepCandidates[i]);
         for (DWORD waited = 0; waited < kSweepHoldMs; waited += 50) {
-            if (SweepFreezePressed()) {
+            if (g_sweepFreeze.exchange(false, std::memory_order_relaxed)) {
                 HT_LOG("=== AIM SWEEP FROZEN on 0x%08X (candidate %d of %d). "
                        "This is the caller that wants the clean camera. It "
                        "stays selected for the rest of this session.",
@@ -1238,16 +1233,17 @@ void CameraHook::Install() {
         HT_LOG("Cull sweep ENABLED: %d candidates, %d ms each. One at a time is "
                "served the TRACKED camera while the rest of the build stays "
                "clean, so whichever of them decides visibility shows up as the "
-               "frame edges filling back in.",
-               kSweepCount, (int)kSweepHoldMs);
+               "frame edges filling back in. A key from [Debug] SweepFreezeKey "
+               "(%s) freezes it on the candidate it is serving.",
+               kSweepCount, (int)kSweepHoldMs, cfg.sweepFreezeKey.c_str());
         std::thread(SweepThread).detach();
     } else if (cfg.aimCallerSweep) {
         HT_LOG("Aim sweep ENABLED: %d candidates, %d ms each, about %d seconds "
                "for a full pass. Hold whatever is aiming wrongly and press "
-               "Ctrl+Shift+J the moment it snaps onto the crosshair - that "
-               "freezes it and names the caller.",
+               "a key from [Debug] SweepFreezeKey (%s) the moment it snaps onto "
+               "the crosshair - that freezes it and names the caller.",
                kSweepCount, (int)kSweepHoldMs,
-               kSweepCount * (int)kSweepHoldMs / 1000);
+               kSweepCount * (int)kSweepHoldMs / 1000, cfg.sweepFreezeKey.c_str());
         std::thread(SweepThread).detach();
     }
     g_trackedTransformCallers = profile->trackedTransformCallers;

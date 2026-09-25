@@ -135,6 +135,8 @@ Record Read(const std::string& path) {
     record["hotkey.Toggle"] = Bindings({{0, c.toggleKey}, {kCtrlShift, 'Y'}});
     record["hotkey.CycleTrackingMode"] = Bindings({{0, c.cycleModeKey}, {kCtrlShift, 'G'}});
     record["hotkey.CycleAdsMode"] = Bindings({{0, c.adsModeKey}, {kCtrlShift, 'U'}});
+    // CameraHook's caller sweeps polled Ctrl+Shift+J, fixed in code.
+    record["hotkey.SweepFreeze"] = Bindings({{kCtrlShift, 'J'}});
     return record;
 }
 

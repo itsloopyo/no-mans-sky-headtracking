@@ -203,8 +203,8 @@ std::vector<Input> Inputs() {
 }
 
 // The import as the game ran it: the frozen reader, then the startup code at
-// 02b6f3e (Mod::Initialize and HotkeyHandler::Start), which is v0.1.0's without
-// the ADS mode.
+// 02b6f3e (Mod::Initialize, HotkeyHandler::Start and the caller sweeps' fixed
+// Ctrl+Shift+J), which is v0.1.0's without the ADS mode.
 Record ImportRecord(const fs::path& path) {
     NMSHT::legacy::Config c;
     const auto status = NMSHT::legacy::Read(path.string(), c, nullptr);
@@ -256,6 +256,7 @@ Record ImportRecord(const fs::path& path) {
     record["startup.mode"] = c.positionEnabled ? "RotationAndPosition" : "RotationOnly";
     record["hotkey.Toggle"] = Bindings({{0, c.toggleKey}, {kCtrlShift, 'Y'}});
     record["hotkey.CycleTrackingMode"] = Bindings({{0, c.cycleModeKey}, {kCtrlShift, 'G'}});
+    record["hotkey.SweepFreeze"] = Bindings({{kCtrlShift, 'J'}});
     return record;
 }
 
@@ -414,6 +415,7 @@ Record ConfigRecord(const NMSHT::Config& c) {
     record["startup.mode"] = ModeName(NMSHT::StartupTrackingMode(c));
     record["hotkey.Toggle"] = ListBindings(c.toggleKey);
     record["hotkey.CycleTrackingMode"] = ListBindings(c.cycleTrackingModeKey);
+    record["hotkey.SweepFreeze"] = ListBindings(c.sweepFreezeKey);
     return record;
 }
 

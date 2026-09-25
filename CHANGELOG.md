@@ -10,6 +10,7 @@
   - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
   - Reticle settings, and a key that toggled the reticle.
 - Hotkeys are written as key names, and each hotkey lists every key that triggers it, the Ctrl+Shift chord included: `ToggleKey=End, Ctrl+Shift+Y`. The chords can now be changed or removed like any other key.
+- The key that stops a `[Debug]` caller sweep on its current candidate, Ctrl+Shift+J, is `[Debug] SweepFreezeKey`, a key list like the others.
 - Keys that moved or were renamed: `[Network] UDPPort` is `UdpPort`, `[General] AutoEnable` is `EnableOnStartup`, `[General] LogToFile` is `[Logging] WriteLog`, `[Hotkeys] CycleModeKey` is `CycleTrackingModeKey`, and `[Position] LimitX`, `LimitY`, `LimitYDown`, `LimitZ` and `LimitZBack` are `PositionLimitX` to `PositionLimitZBack`. `[Position] Enabled` is now the startup tracking mode, `[General] RotationEnabled` and `[Position] PositionEnabled`: `Enabled=false` converts to rotation only.
 - An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
 - The tracking mode you pick with Page Up / Ctrl+Shift+G is saved to `HeadTracking.ini` and is the mode the game starts in next time. End still turns head tracking on or off for the current session only.

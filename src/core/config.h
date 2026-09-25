@@ -61,6 +61,11 @@ struct Config {
     // which consumer decides visibility, when culling is following the wrong
     // camera. Diagnostic only.
     bool cullCallerSweep = false;
+    // Freezes either sweep on the candidate it is serving, and names it. A
+    // key, not "quit when it looks right": quitting takes seconds and the sweep
+    // has moved on by then, where a press lands on the candidate under the
+    // player's eye.
+    std::string sweepFreezeKey = "Ctrl+Shift+J";
     // Records every distinct return address that calls the camera accessor,
     // with a hit count, and dumps the table to the log. The caller lists a
     // profile pins have to come from somewhere, and on a build nobody has

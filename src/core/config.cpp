@@ -4,6 +4,8 @@
 #include "debug_log.h"
 #include "legacy_config/legacy_config.h"
 
+#include <cameraunlock/config/hotkey_codec.h>
+
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -50,6 +52,8 @@ cfg::ConfigTable<Config> ConfigTable() {
         .Local("Debug", "CullCallerSweep", &Config::cullCallerSweep, cfg::BoolCodec(),
                "true: the same sweep the other way round, serving the tracked camera to one candidate\n"
                "at a time, to find what decides visibility.")
+        .Local("Debug", "SweepFreezeKey", &Config::sweepFreezeKey, cfg::HotkeyCodec(),
+               "Stops AimCallerSweep or CullCallerSweep on the candidate it is serving and logs it.")
         .Local("Debug", "CallerCensus", &Config::callerCensus, cfg::BoolCodec(),
                "true: count every caller of the camera accessor and write the counts to the log\n"
                "every five seconds.")
@@ -157,6 +161,9 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     out.readWatch = read.readWatch;
     out.aimCallerSweep = read.aimCallerSweep;
     out.cullCallerSweep = read.cullCallerSweep;
+    // The published build polled Ctrl+Shift+J, fixed in code, while a sweep ran.
+    out.sweepFreezeKey = cameraunlock::input::FormatKeyBindings(
+        {KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, 'J'}});
     out.callerCensus = read.callerCensus;
     out.liveCallerOverrides = read.liveCallerOverrides;
     out.writeWatch = read.writeWatch;

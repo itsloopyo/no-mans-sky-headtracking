@@ -114,6 +114,10 @@ void DefaultsAreTheFleetDefaults() {
     Check(cycle.size() == 2 && cycle[0].vk == VK_PRIOR && cycle[0].modifiers == KeyModifiers::kNone &&
               cycle[1].vk == 'G' && cycle[1].modifiers == (KeyModifiers::kCtrl | KeyModifiers::kShift),
           "CycleTrackingModeKey registers PageUp and Ctrl+Shift+G");
+    const auto freeze = NMSHT::KeyBindings(defaults.sweepFreezeKey);
+    Check(freeze.size() == 1 && freeze[0].vk == 'J' &&
+              freeze[0].modifiers == (KeyModifiers::kCtrl | KeyModifiers::kShift),
+          "SweepFreezeKey registers Ctrl+Shift+J");
     Check(defaults.aimTransformCallers.empty() && defaults.aimCopyCallers.empty() &&
               defaults.trackedTransformCallers.empty() && defaults.sceneSampleRva.empty(),
           "the [Debug] address lists default to the build's own");

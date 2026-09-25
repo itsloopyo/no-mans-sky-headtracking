@@ -67,6 +67,10 @@ private:
 // not.
 void OnRenderPhaseBegin(void* committedCamera);
 
+// [Debug] SweepFreezeKey: stops a running caller sweep on its current candidate.
+// Called from the hotkey thread.
+void RequestSweepFreeze();
+
 // How many frames have reached the injection point. Zero after the game has
 // been drawing for a while means the mod is hooked to something the renderer
 // never calls, which is indistinguishable from a working mod without it.
