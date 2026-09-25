@@ -37,6 +37,6 @@ oracle copy	tests/config_differential/oracle/debug_log.h	f9d5221e0a745777eb54eaa
 oracle copy	tests/config_differential/oracle/pch.h	ac4ce9cd43c495f04a90f1858292e0e996ec7f332af6c5d739d9a57d1cb53ff8
 oracle copy	tests/config_differential/oracle/core/constants.h	ee9ae148981fe8cde5d748caa54a0f54487809e7d51f8ab4b9fd5022d06a6d16
 oracle copy	tests/config_differential/oracle/core-c480d8a/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
-input	v0.1.0:HeadTracking.ini, and plugins/HeadTracking.ini in both v0.1.0 release ZIPs	d5411bd8d81252a2684b35679518fe20d66a40f6276665af4290e3332538ec4f
+input	v0.1.0:HeadTracking.ini, plugins/HeadTracking.ini in the v0.1.0 installer ZIP and HeadTracking.ini at the root of the v0.1.0 Nexus ZIP	d5411bd8d81252a2684b35679518fe20d66a40f6276665af4290e3332538ec4f
 input	v0.1.0 first-run file (nms_config_oracle --first-run)	d10292e67d440452689eb9b93eb0df2448c6dd4167864eaca9b0410a97827fa3
 input	02b6f3e:HeadTracking.ini, also the launcher seed there, unreleased	8be3e72214d0ba509b4cfe68e49c7c97c6e5be749ffe06db18d03d76679eeb31
