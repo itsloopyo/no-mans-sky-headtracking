@@ -221,5 +221,6 @@ foreach(pinned
     string(REPLACE "|" ";" pair "${pinned}")
     list(GET pair 0 pinned_path)
     list(GET pair 1 pinned_hash)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${pinned_path}")
     nms_require_hash("${pinned_path}" "${pinned_hash}")
 endforeach()
