@@ -40,18 +40,10 @@ jobs:
         with:
           run-install: false
 
-      # Nothing in CI ran the suite before this: the build compiles the five test
-      # executables as part of the ALL target but never executes them, so a
-      # regression in the camera composition, the ADS pipeline, the state gate or
-      # the config boundary merged green. Before packaging, so a failing test
-      # does not cost a full package first.
-      - name: Test
-        shell: pwsh
-        run: pixi run test-release
-
-      # Build + package through the SAME command a developer runs locally. All
-      # build logic lives in the pixi task chain (setup -> build-release ->
-      # package); the workflow owns none, so local and CI can't drift.
+      # Build, test and package through the SAME command a developer runs
+      # locally. All build logic lives in the pixi task chain (setup ->
+      # build-release -> test-release -> package); the workflow owns none, so
+      # local and CI can't drift.
       - name: Build and package
         shell: pwsh
         run: pixi run package

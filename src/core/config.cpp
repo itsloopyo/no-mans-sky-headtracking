@@ -2,176 +2,53 @@
 #include "config.h"
 
 #include <cameraunlock/config/ini_reader.h>
-#include <cameraunlock/config/value_guards.h>
-#include <cameraunlock/protocol/port_utils.h>
-
-#include <cctype>
-#include <cstdlib>
 
 #include "debug_log.h"
+#include "legacy_config/legacy_config.h"
 
 namespace NMSHT {
 
-namespace {
-
-namespace guards = cameraunlock::config;
-
-// Every number in the file goes through guards::ReadFloatChecked rather than
-// IniReader::ReadFloat. ReadFloat is a strtod PREFIX parse over text that still
-// carries its inline comment, so "LocalSmoothing=0,15" - a European decimal
-// comma, and the reader pins the C locale, so this is the expected user error -
-// yields 0.0, sits inside the valid range and passes every check with nothing in
-// the log. ReadFloatChecked strips the comment, requires the whole token to
-// parse, refuses NaN and Inf before they reach exp() or the camera basis, and
-// says what it had to correct.
-//
-// The bounds are the guards' own: they bound what would arrive at the camera as
-// garbage, not what is a sensible setting, so every value a player might
-// plausibly type is kept as typed. Validation only, never a floor - a configured
-// 0.0 smoothing stays 0.0.
-float ReadFloat(const cameraunlock::IniReader& ini, const char* section,
-                const char* key, float fallback, float lo, float hi) {
-    return guards::ReadFloatChecked(ini, section, key, fallback, lo, hi,
-                                    &cameraunlock::logging::Line);
-}
-
-// A negative multiplier is a legitimate way to invert an axis without touching
-// the Invert flags, so only the magnitude is bounded.
-constexpr float kMaxSens = guards::kMaxSensitivity;
-
-// Travel limits are metres, and the floor is 0 rather than -kMaxPositionLimit: a
-// negative limit inverts the clamp in PositionProcessor - Clamp(v, -limit,
-// limit) returns the lower bound for every input once the bounds cross - which
-// pins the lean at a fixed offset instead of freeing it.
-constexpr float kMaxLimit = guards::kMaxPositionLimit;
-
-// IniReader::ReadBool matches the WHOLE value against a fixed list and hands
-// back the default on anything else, silently. HeadTracking.ini is seeded next
-// to the game exe for the player to edit, so "Enabled=true ; lean" - a comment
-// where the file already puts one for other keys - would revert the setting with
-// nothing in the log the README tells them to read.
-bool ReadBool(const cameraunlock::IniReader& ini, const char* section,
-              const char* key, bool fallback) {
-    const std::string raw = guards::ReadRawValue(ini, section, key);
-    if (raw.empty()) return fallback;
-
-    std::string lowered = raw;
-    for (char& c : lowered) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-
-    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") return true;
-    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") return false;
-
-    HT_LOG("config: [%s] %s=%s is not true or false, so the default %s is used instead.",
-           section, key, raw.c_str(), fallback ? "true" : "false");
-    return fallback;
-}
-
-// A virtual key GetAsyncKeyState can never report is a hotkey that silently does
-// nothing: ToggleKey=0x230 registers and is polled forever without ever firing,
-// and the user cannot tell that from a broken mod. The token is parsed whole,
-// for the same reason every number above is - IniReader::ReadHex is a strtol
-// PREFIX parse, so "ToggleKey=End" reads as 0x0E and binds a code
-// GetAsyncKeyState never reports.
-int ReadHotkey(const cameraunlock::IniReader& ini, const char* key, int fallback) {
-    const std::string raw = guards::ReadRawValue(ini, "Hotkeys", key);
-    if (raw.empty()) return fallback;
-
-    const char* text = raw.c_str();
-    if (raw.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) text += 2;
-
-    char* end = nullptr;
-    const long vk = std::strtol(text, &end, 16);
-    if (end != nullptr && *end == '\0' && end != text && vk >= 0 && vk <= 0xFF &&
-        guards::IsBindableVirtualKey(static_cast<int>(vk))) {
-        return static_cast<int>(vk);
-    }
-
-    HT_LOG("config: [Hotkeys] %s=%s is not a virtual key code that can be polled (write it "
-           "as hex, GetAsyncKeyState defines 0x01-0xFE, and Ctrl/Shift/Alt are reserved for "
-           "the chord bindings), using 0x%X",
-           key, raw.c_str(), fallback);
-    return fallback;
-}
-
-}  // namespace
-
 bool Config::LoadFromIni(const std::string& path) {
-    cameraunlock::IniReader r;
-    if (!r.Open(path)) return false;
+    legacy::Config read;
+    if (legacy::Read(path, read, &cameraunlock::logging::Line) == legacy::ReadStatus::Absent) return false;
 
-    // ReadInt is the one reader that does not honour its default on a
-    // present-but-unparseable value - it hands back 0 - and a receiver bound to
-    // port 0 takes an ephemeral port no tracker is sending to. A value past
-    // 65535 is worse than useless cast straight to uint16_t: 70000 truncates to
-    // 4464 and the mod listens on a port the user never named.
-    const int rawPort = r.ReadInt("Network", "UDPPort", udpPort);
-    bool portValid = false;
-    const uint16_t port = cameraunlock::NormalizeUdpPort(rawPort, udpPort, portValid);
-    if (!portValid) {
-        HT_LOG("config: [Network] UDPPort=%d is outside 1024-65535, using %u", rawPort, port);
-    }
-    udpPort = port;
-
-    // Sensitivity
-    yawSensitivity   = ReadFloat(r, "Sensitivity", "YawMultiplier",   yawSensitivity,   -kMaxSens, kMaxSens);
-    pitchSensitivity = ReadFloat(r, "Sensitivity", "PitchMultiplier", pitchSensitivity, -kMaxSens, kMaxSens);
-    rollSensitivity  = ReadFloat(r, "Sensitivity", "RollMultiplier",  rollSensitivity,  -kMaxSens, kMaxSens);
-    invertYaw   = ReadBool(r, "Sensitivity", "InvertYaw",   invertYaw);
-    invertPitch = ReadBool(r, "Sensitivity", "InvertPitch", invertPitch);
-    invertRoll  = ReadBool(r, "Sensitivity", "InvertRoll",  invertRoll);
-
-    // Smoothing. Each key falls back to its own default (local 0.0, remote 0.15),
-    // never to a shared one: a bad RemoteSmoothing dropping to the local default
-    // would leave a phone's network jitter entirely unsmoothed.
-    localSmoothing  = ReadFloat(r, "Smoothing", "LocalSmoothing",  localSmoothing,  0.0f, 1.0f);
-    remoteSmoothing = ReadFloat(r, "Smoothing", "RemoteSmoothing", remoteSmoothing, 0.0f, 1.0f);
-    guards::WarnRetiredSmoothingKey(r, "Smoothing", "Factor", &cameraunlock::logging::Line);
-    guards::WarnRetiredSmoothingKey(r, "Position", "Smoothing", &cameraunlock::logging::Line);
-
-    // Position
-    positionEnabled = ReadBool (r, "Position", "Enabled",      positionEnabled);
-    posSensitivityX = ReadFloat(r, "Position", "SensitivityX", posSensitivityX, -kMaxSens, kMaxSens);
-    posSensitivityY = ReadFloat(r, "Position", "SensitivityY", posSensitivityY, -kMaxSens, kMaxSens);
-    posSensitivityZ = ReadFloat(r, "Position", "SensitivityZ", posSensitivityZ, -kMaxSens, kMaxSens);
-    posLimitX     = ReadFloat(r, "Position", "LimitX",     posLimitX,     0.0f, kMaxLimit);
-    posLimitY     = ReadFloat(r, "Position", "LimitY",     posLimitY,     0.0f, kMaxLimit);
-    // Defaults to whatever LimitY resolved to, so a config that sets only
-    // LimitY stays symmetric instead of silently keeping the 0.20 default
-    // downward while the upward budget moves.
-    posLimitYDown = ReadFloat(r, "Position", "LimitYDown", posLimitY,     0.0f, kMaxLimit);
-    posLimitZ     = ReadFloat(r, "Position", "LimitZ",     posLimitZ,     0.0f, kMaxLimit);
-    posLimitZBack = ReadFloat(r, "Position", "LimitZBack", posLimitZBack, 0.0f, kMaxLimit);
-    // No position smoothing key: position uses the same LocalSmoothing /
-    // RemoteSmoothing pair as rotation.
-    posInvertX = ReadBool(r, "Position", "InvertX", posInvertX);
-    posInvertY = ReadBool(r, "Position", "InvertY", posInvertY);
-    posInvertZ = ReadBool(r, "Position", "InvertZ", posInvertZ);
-
-    // Reticle
-    reticleFollowsAim = ReadBool(r, "Reticle", "FollowAim", reticleFollowsAim);
-
-    // Hotkeys
-    toggleKey    = ReadHotkey(r, "ToggleKey",    toggleKey);
-    cycleModeKey = ReadHotkey(r, "CycleModeKey", cycleModeKey);
-
-    // General
-    autoEnable = ReadBool(r, "General", "AutoEnable", autoEnable);
-    logToFile  = ReadBool(r, "General", "LogToFile",  logToFile);
-
-    diagnostics      = ReadBool(r, "Debug", "Diagnostics",      diagnostics);
-    readWatch        = ReadBool(r, "Debug", "ReadWatch",        readWatch);
-    aimCallerSweep   = ReadBool(r, "Debug", "AimCallerSweep",   aimCallerSweep);
-    cullCallerSweep  = ReadBool(r, "Debug", "CullCallerSweep",  cullCallerSweep);
-    callerCensus     = ReadBool(r, "Debug", "CallerCensus",     callerCensus);
-    liveCallerOverrides = ReadBool(r, "Debug", "LiveCallerOverrides", liveCallerOverrides);
-    writeWatch       = ReadBool(r, "Debug", "WriteWatch",       writeWatch);
-    weaponProbe      = ReadBool(r, "Debug", "WeaponProbe",      weaponProbe);
-    cleanGlobalCycle = ReadBool(r, "Debug", "CleanGlobalCycle", cleanGlobalCycle);
-    crosshairProbe   = ReadBool(r, "Debug", "CrosshairProbe",   crosshairProbe);
-    reticleSweep     = ReadBool(r, "Debug", "ReticleSweep",     reticleSweep);
-
+    udpPort = read.udpPort;
+    yawSensitivity = read.yawSensitivity;
+    pitchSensitivity = read.pitchSensitivity;
+    rollSensitivity = read.rollSensitivity;
+    invertYaw = read.invertYaw;
+    invertPitch = read.invertPitch;
+    invertRoll = read.invertRoll;
+    localSmoothing = read.localSmoothing;
+    remoteSmoothing = read.remoteSmoothing;
+    positionEnabled = read.positionEnabled;
+    posSensitivityX = read.posSensitivityX;
+    posSensitivityY = read.posSensitivityY;
+    posSensitivityZ = read.posSensitivityZ;
+    posLimitX = read.posLimitX;
+    posLimitY = read.posLimitY;
+    posLimitYDown = read.posLimitYDown;
+    posLimitZ = read.posLimitZ;
+    posLimitZBack = read.posLimitZBack;
+    posInvertX = read.posInvertX;
+    posInvertY = read.posInvertY;
+    posInvertZ = read.posInvertZ;
+    reticleFollowsAim = read.reticleFollowsAim;
+    toggleKey = read.toggleKey;
+    cycleModeKey = read.cycleModeKey;
+    autoEnable = read.autoEnable;
+    logToFile = read.logToFile;
+    diagnostics = read.diagnostics;
+    readWatch = read.readWatch;
+    aimCallerSweep = read.aimCallerSweep;
+    cullCallerSweep = read.cullCallerSweep;
+    callerCensus = read.callerCensus;
+    liveCallerOverrides = read.liveCallerOverrides;
+    writeWatch = read.writeWatch;
+    weaponProbe = read.weaponProbe;
+    cleanGlobalCycle = read.cleanGlobalCycle;
+    crosshairProbe = read.crosshairProbe;
+    reticleSweep = read.reticleSweep;
     return true;
 }
 

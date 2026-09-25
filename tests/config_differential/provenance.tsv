@@ -1,0 +1,42 @@
+# What the differential test compares, and where each file came from.
+# Columns: role, source (commit:path, or the path in this repo), sha256 of the bytes.
+# v0.1.0 (c18a361) is the only published build: there is no dev pre-release and no predecessor
+# repo. It pinned core c480d8a. Every core source its reader compiles holds the same bytes at
+# c480d8a and at the current pin, apart from ads/ads_mode.h, which core has since removed and
+# the oracle carries as a copy. Comparison 1 is not empty by construction: the frozen reader is
+# 02b6f3e's src/core/config.cpp, which differs from v0.1.0's (e5fb487 retired the ADS mode).
+published reader	v0.1.0:src/core/config.cpp	7ddc3105db8ce454a93d407e029ce65d3fe0f4b2d70d407319a34c0f8db69f8e
+published reader	v0.1.0:src/core/config.h	37d479a87713236016ff4c5f8d5840a1f3383918e53a8ea08df427a88e0bf25c
+published reader	v0.1.0:src/core/debug_log.h	f9d5221e0a745777eb54eaab121653b6eaa4306a020d573d442c9403bd835e23
+published reader	v0.1.0:src/pch.h	ac4ce9cd43c495f04a90f1858292e0e996ec7f332af6c5d739d9a57d1cb53ff8
+published reader	v0.1.0:src/core/constants.h	ee9ae148981fe8cde5d748caa54a0f54487809e7d51f8ab4b9fd5022d06a6d16
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+published core source	cameraunlock-core c480d8a:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/config/value_guards.h	6d3e3512bdfc9ac2a54bee750c5425191bdb4c24f3ae2ea3b9925612e01c78e5
+published core source	cameraunlock-core c480d8a:cpp/src/config/value_guards.cpp	a833ff7f2721f7974ce039a3597349a0974e6695ce3e75e598ce5bf4985a14b1
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/math/finite_utils.h	c59772d698d54ade3374ee1221b74f5563a86d76f0eb34a989ef7efab389c0ad
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/protocol/port_utils.h	91bff564d5e279b66527ec5553afcf4d591812dab0e78f71a48ef412e4db7a44
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/data/position_settings.h	b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+published core source	cameraunlock-core c480d8a:cpp/include/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
+frozen from	02b6f3e:src/core/config.cpp	145997c5b6aeb74f04a83507b4cf7c9db4c3545f8dce9ba566372e902add2979
+frozen from	02b6f3e:src/camera/camera_hook.cpp	e331915c9571415b14afc85ccbb1d5cef1f3f7e0bbdf19586f550a8c627acfe0
+frozen reader	src/legacy_config/legacy_config.h	59e739a7b4501e81aa77c87b57e66090bde33867774a2e40d295cd1340312cc1
+frozen reader	src/legacy_config/legacy_config.cpp	cafb66338c1dfd085fdd5e7592f0603d9e742bf6f715e57df53ed7dc9afdfc0b
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+import core source	cameraunlock-core befb88e:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/config/value_guards.h	6d3e3512bdfc9ac2a54bee750c5425191bdb4c24f3ae2ea3b9925612e01c78e5
+import core source	cameraunlock-core befb88e:cpp/src/config/value_guards.cpp	a833ff7f2721f7974ce039a3597349a0974e6695ce3e75e598ce5bf4985a14b1
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/math/finite_utils.h	c59772d698d54ade3374ee1221b74f5563a86d76f0eb34a989ef7efab389c0ad
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/protocol/port_utils.h	91bff564d5e279b66527ec5553afcf4d591812dab0e78f71a48ef412e4db7a44
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/data/position_settings.h	b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5
+import core source	cameraunlock-core befb88e:cpp/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+oracle copy	tests/config_differential/oracle/config.cpp	7ddc3105db8ce454a93d407e029ce65d3fe0f4b2d70d407319a34c0f8db69f8e
+oracle copy	tests/config_differential/oracle/config.h	37d479a87713236016ff4c5f8d5840a1f3383918e53a8ea08df427a88e0bf25c
+oracle copy	tests/config_differential/oracle/debug_log.h	f9d5221e0a745777eb54eaab121653b6eaa4306a020d573d442c9403bd835e23
+oracle copy	tests/config_differential/oracle/pch.h	ac4ce9cd43c495f04a90f1858292e0e996ec7f332af6c5d739d9a57d1cb53ff8
+oracle copy	tests/config_differential/oracle/core/constants.h	ee9ae148981fe8cde5d748caa54a0f54487809e7d51f8ab4b9fd5022d06a6d16
+oracle copy	tests/config_differential/oracle/core-c480d8a/cameraunlock/ads/ads_mode.h	94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de
+input	v0.1.0:HeadTracking.ini, and plugins/HeadTracking.ini in both v0.1.0 release ZIPs	d5411bd8d81252a2684b35679518fe20d66a40f6276665af4290e3332538ec4f
+input	v0.1.0 first-run file (nms_config_oracle --first-run)	d10292e67d440452689eb9b93eb0df2448c6dd4167864eaca9b0410a97827fa3
+input	02b6f3e:HeadTracking.ini, also the launcher seed there, unreleased	8be3e72214d0ba509b4cfe68e49c7c97c6e5be749ffe06db18d03d76679eeb31

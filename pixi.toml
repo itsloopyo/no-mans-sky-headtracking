@@ -21,9 +21,8 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 
 test = { cmd = "ctest --test-dir build -C Debug --output-on-failure", depends-on = ["build"] }
 
-# What CI runs, and it runs first: this task performs the setup -> build-release
-# chain and `package` then reuses that build. Release rather than Debug so the
-# runner is not made to build the tree twice.
+# The suite `package` runs first, Release rather than Debug so the runner is not
+# made to build the tree twice.
 test-release = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
 
 deploy  = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Debug",   depends-on = ["build"] }
@@ -37,7 +36,9 @@ uninstall-all = { cmd = "cmd /c scripts\\uninstall.cmd --force" }
 clean     = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }" """ }
 clean-all = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }" """ }
 
-package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+# Packaging runs the Release suite first, the config differential test among it, so
+# no ZIP is built from a tree whose tests fail.
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test-release"] }
 release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
 
 # Shim-only mod: the DLL is itself the system-DLL proxy the game loads, so there

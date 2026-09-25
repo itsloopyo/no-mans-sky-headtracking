@@ -29,6 +29,7 @@ add_library(NoMansSkyHeadTracking SHARED
     src/xinput_proxy.cpp
     src/core/mod.cpp
     src/core/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/core/early_diag.cpp
     src/core/game_state.cpp
     src/core/window_centering.cpp
@@ -110,7 +111,8 @@ set_tests_properties(udp_recovery_test PROPERTIES TIMEOUT 120)
 
 # The config suite drives the mod's own reader against real ini files on disk,
 # so it compiles src/core/config.cpp rather than a copy of its rules.
-add_executable(config_test tests/config_test.cpp src/core/config.cpp)
+add_executable(config_test tests/config_test.cpp src/core/config.cpp
+    src/legacy_config/legacy_config.cpp)
 set_target_properties(config_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 target_include_directories(config_test PRIVATE
@@ -144,3 +146,77 @@ if(MSVC)
 endif()
 add_test(NAME commit_hook_test COMMAND commit_hook_test)
 set_tests_properties(commit_hook_test PROPERTIES TIMEOUT 30)
+
+# The canonical config conversion's differential test. The oracle is v0.1.0's
+# reader and startup code: byte copies of its files in
+# tests/config_differential/oracle, built against the core ADS header it
+# included at its pin (c480d8a), which core has since removed. It is its own
+# executable, so its NMSHT::Config never meets the runtime one.
+set(NMS_DIFFERENTIAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
+add_executable(nms_config_oracle
+    ${NMS_DIFFERENTIAL_DIR}/oracle/oracle_main.cpp
+    ${NMS_DIFFERENTIAL_DIR}/oracle/config.cpp)
+target_include_directories(nms_config_oracle PRIVATE
+    ${NMS_DIFFERENTIAL_DIR}/oracle
+    ${NMS_DIFFERENTIAL_DIR}/oracle/core-c480d8a
+    ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp/include)
+target_link_libraries(nms_config_oracle PRIVATE cameraunlock ws2_32)
+
+add_executable(nms_config_differential
+    ${NMS_DIFFERENTIAL_DIR}/differential_test.cpp
+    src/legacy_config/legacy_config.cpp)
+target_include_directories(nms_config_differential PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${NMS_DIFFERENTIAL_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp/include)
+target_compile_definitions(nms_config_differential PRIVATE
+    NMS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(nms_config_differential PRIVATE cameraunlock ws2_32)
+
+foreach(nms_differential_target nms_config_oracle nms_config_differential)
+    set_target_properties(${nms_differential_target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    if(MSVC)
+        target_compile_options(${nms_differential_target} PRIVATE /W4 /WX /MP /EHsc)
+    endif()
+endforeach()
+add_test(NAME nms_config_differential
+         COMMAND nms_config_differential $<TARGET_FILE:nms_config_oracle>)
+
+# What the differential test compiles is pinned by hash, line endings aside: the
+# oracle's files must stay v0.1.0's (git show v0.1.0:<path>, and core c480d8a's
+# ADS header), the core sources both readers compile must stay the ones v0.1.0
+# was built with (core c480d8a), and the frozen reader is never edited.
+function(nms_require_hash path expected)
+    file(READ "${path}" text)
+    string(REPLACE "\r" "" text "${text}")
+    string(SHA256 actual "${text}")
+    if(NOT actual STREQUAL expected)
+        message(FATAL_ERROR "${path} has changed (SHA-256 of its text ${actual}, pinned "
+                            "${expected}). The config differential test compares against "
+                            "exactly this file; see CMakeLists.txt.")
+    endif()
+endfunction()
+set(NMS_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp)
+foreach(pinned
+        "${NMS_DIFFERENTIAL_DIR}/oracle/config.cpp|7ddc3105db8ce454a93d407e029ce65d3fe0f4b2d70d407319a34c0f8db69f8e"
+        "${NMS_DIFFERENTIAL_DIR}/oracle/config.h|37d479a87713236016ff4c5f8d5840a1f3383918e53a8ea08df427a88e0bf25c"
+        "${NMS_DIFFERENTIAL_DIR}/oracle/debug_log.h|f9d5221e0a745777eb54eaab121653b6eaa4306a020d573d442c9403bd835e23"
+        "${NMS_DIFFERENTIAL_DIR}/oracle/pch.h|ac4ce9cd43c495f04a90f1858292e0e996ec7f332af6c5d739d9a57d1cb53ff8"
+        "${NMS_DIFFERENTIAL_DIR}/oracle/core/constants.h|ee9ae148981fe8cde5d748caa54a0f54487809e7d51f8ab4b9fd5022d06a6d16"
+        "${NMS_DIFFERENTIAL_DIR}/oracle/core-c480d8a/cameraunlock/ads/ads_mode.h|94cd36b585e878e673566f602e9496417cb797970162fcc9c2af1e50e24358de"
+        "${NMS_CORE_DIR}/include/cameraunlock/config/ini_reader.h|a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a"
+        "${NMS_CORE_DIR}/src/config/ini_reader.cpp|e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c"
+        "${NMS_CORE_DIR}/include/cameraunlock/config/value_guards.h|6d3e3512bdfc9ac2a54bee750c5425191bdb4c24f3ae2ea3b9925612e01c78e5"
+        "${NMS_CORE_DIR}/src/config/value_guards.cpp|a833ff7f2721f7974ce039a3597349a0974e6695ce3e75e598ce5bf4985a14b1"
+        "${NMS_CORE_DIR}/include/cameraunlock/math/finite_utils.h|c59772d698d54ade3374ee1221b74f5563a86d76f0eb34a989ef7efab389c0ad"
+        "${NMS_CORE_DIR}/include/cameraunlock/protocol/port_utils.h|91bff564d5e279b66527ec5553afcf4d591812dab0e78f71a48ef412e4db7a44"
+        "${NMS_CORE_DIR}/include/cameraunlock/data/position_settings.h|b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5"
+        "${NMS_CORE_DIR}/include/cameraunlock/math/smoothing_utils.h|fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_config/legacy_config.h|59e739a7b4501e81aa77c87b57e66090bde33867774a2e40d295cd1340312cc1"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_config/legacy_config.cpp|cafb66338c1dfd085fdd5e7592f0603d9e742bf6f715e57df53ed7dc9afdfc0b")
+    string(REPLACE "|" ";" pair "${pinned}")
+    list(GET pair 0 pinned_path)
+    list(GET pair 1 pinned_hash)
+    nms_require_hash("${pinned_path}" "${pinned_hash}")
+endforeach()

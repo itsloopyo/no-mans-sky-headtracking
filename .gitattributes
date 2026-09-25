@@ -12,3 +12,7 @@
 *.jpg  binary
 *.gif  binary
 *.ico  binary
+
+# Differential test inputs are the exact bytes published builds shipped or wrote;
+# normalising them would test other files.
+tests/config_differential/data/** -text
