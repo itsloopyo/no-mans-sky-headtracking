@@ -4,6 +4,7 @@
 #include "input/hotkey_handler.h"
 
 #include <atomic>
+#include <optional>
 #include <string>
 
 #include <cameraunlock/protocol/udp_receiver.h>
@@ -24,11 +25,15 @@ public:
     void Toggle();
 
     // Three-state cycle: rotation and position -> rotation only ->
-    // position only -> back.
+    // position only -> back. Saves the new mode as the startup mode.
     void CycleTrackingMode();
 
-    Config& GetConfig() { return m_config; }
-    const std::string& GameDir() const { return m_gameDir; }
+    const Config& GetConfig() const { return m_config; }
+
+    // HeadTracking.ini's settings when the file changed since the owner last
+    // read or wrote it, for the diagnostics that pick up edits mid-session.
+    // Nothing when it did not change or could not be read.
+    std::optional<Config> ReloadChangedConfig();
 
     // Runs the shared pipeline for this frame (interpolation -> smooth ->
     // sensitivity) and returns the processed
@@ -59,7 +64,7 @@ private:
     std::atomic<bool> m_receiving{false};
 
     Config m_config;
-    std::string m_gameDir;
+    std::optional<cameraunlock::config::ConfigOwner<Config>> m_configOwner;
 
     cameraunlock::UdpReceiver m_receiver;
     using Session = cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver>;

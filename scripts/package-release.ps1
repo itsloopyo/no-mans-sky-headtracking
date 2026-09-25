@@ -102,8 +102,9 @@ Write-Host "Created: $installerZip" -ForegroundColor Green
 # ---------------- Nexus ZIP ----------------
 $nexusStaging = Join-Path $stagingRoot 'nexus'
 New-Item -ItemType Directory -Path $nexusStaging | Out-Null
+# No HeadTracking.ini: a ZIP extracted over the game folder would put the
+# default file over the player's own, and the mod creates it at first launch.
 Copy-Item $modDll     -Destination (Join-Path $nexusStaging 'XINPUT9_1_0.dll')   -Force
-Copy-Item $configFile -Destination (Join-Path $nexusStaging 'HeadTracking.ini') -Force
 Copy-Item (Join-Path $projectRoot 'README.md') -Destination $nexusStaging -Force
 Copy-Item (Join-Path $projectRoot 'LICENSE')   -Destination $nexusStaging -Force
 

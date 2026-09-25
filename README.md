@@ -6,6 +6,13 @@ An unofficial head tracking mod for No Man's Sky that moves the view with your
 head while your mouse or controller keeps aiming, driven by a webcam, phone, or
 any OpenTrack compatible tracker, with no VR headset required.
 
+> **Updating from 0.1.0?** `HeadTracking.ini` has a new layout. The first time
+> this version starts, it converts your file once and keeps the old one beside
+> it as `HeadTracking.ini.pre-canonical`. The sensitivity, axis inversion and
+> `[Reticle] FollowAim` settings are gone: set sensitivity and inversion in your
+> tracker, and the crosshair now always follows your aim. See
+> [Configuration](#configuration).
+
 ## Features
 
 - **Decoupled look and aim** - head tracking moves the view; aim stays on your mouse or controller
@@ -66,15 +73,17 @@ install.cmd "D:\XboxGames\No Man's Sky\Content"
 
 ### Manual Installation
 
-The `-nexus.zip` from the same release holds the two payload files plus
-`README.md`, `LICENSE` and `THIRD-PARTY-NOTICES.md`. Copy `XINPUT9_1_0.dll` and
-`HeadTracking.ini` into the `Binaries` folder next to `NMS.exe`. There is no
-separate mod loader to install: No Man's Sky imports `XINPUT9_1_0.dll` and
+The `-nexus.zip` from the same release holds `XINPUT9_1_0.dll` plus
+`README.md`, `LICENSE` and `THIRD-PARTY-NOTICES.md`. Copy `XINPUT9_1_0.dll` into
+the `Binaries` folder next to `NMS.exe`. The mod creates `HeadTracking.ini`
+beside it the first time the game starts, and an existing one is kept. There is
+no separate mod loader to install: No Man's Sky imports `XINPUT9_1_0.dll` and
 Windows searches the game folder before `System32`, so the game loads the shim
 on startup and the shim forwards
 `XInputGetState` and `XInputSetState` on to the genuine copy in `System32`,
-leaving controller input untouched. To remove a manual install, delete the two
-files.
+leaving controller input untouched. To remove a manual install, delete
+`XINPUT9_1_0.dll`, and `HeadTracking.ini` too if you do not want to keep your
+settings.
 
 ## Setting Up OpenTrack
 
@@ -142,7 +151,9 @@ CENTER button.
 Yaw automatically follows the walking horizon on foot and uses the camera's
 local axis in a ship or during a spacewalk.
 
-Two equivalent binding sets, use whichever your keyboard has:
+Each action has a nav-cluster key and a chord by default, use whichever your
+keyboard has. Both are set in `[Hotkeys]` in `HeadTracking.ini`, where you can
+change or remove either.
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
@@ -156,6 +167,10 @@ Two equivalent binding sets, use whichever your keyboard has:
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
+The mode you pick is saved to `HeadTracking.ini` and is the mode the next launch
+starts in. `End` turns tracking on and off for the current session only; whether
+it is on at startup is `[General] EnableOnStartup`.
+
 ### Aiming down sights
 
 Head tracking stays on while you aim. The weapon stays where your mouse or
@@ -164,65 +179,120 @@ sights still lined up, and your rounds land where those sights point.
 
 ## Configuration
 
-`HeadTracking.ini` is written next to `NMS.exe` in `Binaries` on first install.
-Edit it and relaunch the game.
+<!-- cameraunlock:config -->
+The mod reads its settings from `Binaries\HeadTracking.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
+
+Earlier versions of the mod used an older layout for this file. The first time this version starts, it converts the file once into the layout below and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
+
+With every setting at its default, the file reads:
 
 ```ini
-[Network]
-UDPPort=4242
+; No Man's Sky head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
 
-[Sensitivity]
-YawMultiplier=1.0
-PitchMultiplier=1.0
-RollMultiplier=1.0
-InvertYaw=false
-InvertPitch=false
-InvertRoll=false
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
+[Network]
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=4242
+
+[General]
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=true
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=true
 
 [Smoothing]
-; Picked per connection from the packet source address; covers rotation and
-; position. 0.0 = none, 1.0 = heaviest (10s time constant).
-; Tracker running on this machine (loopback).
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
 LocalSmoothing=0.0
-; Tracker on a remote device on the network.
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
 RemoteSmoothing=0.15
 
 [Position]
-Enabled=true
-SensitivityX=1.0
-SensitivityY=1.0
-SensitivityZ=1.0
-LimitX=0.30
-LimitY=0.20
-; Downward travel. Defaults to LimitY, so vertical stays symmetric unless you
-; set it lower for a tighter crouch range.
-LimitYDown=0.20
-LimitZ=0.40
-LimitZBack=0.10
-InvertX=false
-InvertY=false
-; InvertZ is for a tracker that sends depth backwards, not for a lean that
-; feels reversed. It is applied before the LimitZ / LimitZBack clamp, so
-; turning it on also swaps the travel budgets to 0.10m forward and 0.40m back.
-InvertZ=false
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=true
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=0.3
+; How far, in metres, raising your head can move the view.
+PositionLimitY=0.2
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=0.2
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=0.4
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=0.1
 
 [Hotkeys]
-; Virtual key codes (hex). End=0x23, PageUp=0x21.
-; Ctrl+Shift+Y/G chord alternatives are also registered.
-ToggleKey=0x23
-CycleModeKey=0x21
+; Turns head tracking on and off.
+ToggleKey=End, Ctrl+Shift+Y
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=PageUp, Ctrl+Shift+G
 
-[General]
-AutoEnable=true
-LogToFile=true
+[Logging]
+; true: write HeadTracking.log beside NMS.exe. It starts fresh every launch.
+WriteLog=true
 
 [Debug]
-; Engine-discovery detail in the log. Turn on when filing a bug report.
+; Everything in this section is for tracking down a fault; leave it as it is unless you
+; were asked to change it.
+; true: write engine-discovery detail to HeadTracking.log. Turn it on for a bug report.
 Diagnostics=false
+; true: log which instructions read the live camera transform, using a CPU data
+; breakpoint. The game crawls while each burst is armed. ReadWatch and WriteWatch share
+; one debug register, so only the first of the two to start is armed.
+ReadWatch=false
+; true: log which instructions write the live camera transform, the same way.
+WriteWatch=false
+; true: serve the clean camera to one candidate caller at a time, cycling every few
+; seconds, and log each one, to find which consumer aims something that aims wrongly.
+AimCallerSweep=false
+; true: the same sweep the other way round, serving the tracked camera to one candidate
+; at a time, to find what decides visibility.
+CullCallerSweep=false
+; true: count every caller of the camera accessor and write the counts to the log
+; every five seconds.
+CallerCensus=false
+; true: use AimTransformCallers, AimCopyCallers and TrackedTransformCallers in place of
+; the build's own callers, and read them again whenever this file changes.
+LiveCallerOverrides=false
+; true: locate the first-person weapon transform and write one report to the log.
+WeaponProbe=false
+; true: hold each engine camera global clean in turn, to find which one places the
+; first-person weapon.
+CleanGlobalCycle=false
+; true: hunt for the crosshair's screen position in memory.
+CrosshairProbe=false
+; true: walk the crosshair around a fixed square instead of following the aim, to tell
+; a crosshair that does not move apart from one that moves to the wrong place.
+ReticleSweep=false
+; Caller addresses, relative to NMS.exe, for LiveCallerOverrides: those served the clean
+; camera through the accessor. Empty keeps the build's own.
+; AimTransformCallers=
+; Those served the clean camera through the copy. Empty keeps the build's own.
+; AimCopyCallers=
+; Those served the tracked camera through the accessor. Empty keeps the build's own.
+; TrackedTransformCallers=
+; Byte offset into the camera transform that ReadWatch covers.
+; ReadWatchOffset=0x0
+; Address, relative to NMS.exe, of the once-a-frame scene sample in place of the build's
+; own. Empty keeps the build's own; 0x0 turns the sample off.
+; SceneSampleRva=
 ```
-
-The `[Debug]` section carries several further probes that are diagnostic only;
-each is commented in the file the installer writes.
+<!-- /cameraunlock:config -->
 
 ## Troubleshooting
 
@@ -249,10 +319,8 @@ each is commented in the file the installer writes.
   pose direct is the usual cause; route it through OpenTrack so its filters can
   clean the feed up.
 - **Wrong rotation axis.** If an axis moves the view the opposite way to your
-  head, set the matching flag in `[Sensitivity]`: `InvertYaw`, `InvertPitch` or
-  `InvertRoll`. For a lean that goes the wrong way, use `[Position] InvertX` or
-  `InvertY`. `InvertZ` is for a tracker that sends depth backwards, and it
-  swaps the forward and backward travel limits with it.
+  head, invert that axis in your tracker. The mod applies the pose as the
+  tracker sends it and has no inversion or sensitivity settings of its own.
 - **The weapon is off to one side when I aim down sights.** Your head is
   turned: the weapon stays on your aim and you are looking past it. Turn back to
   it, or move your aim to where you are looking.
@@ -265,10 +333,10 @@ Download the new release and run `install.cmd` again. Your config is preserved.
 
 ## Uninstalling
 
-Run `uninstall.cmd`. This removes the mod DLL and its config and log files. The
-shim is the whole mod here, so there is no separate loader left behind, and the
-DLL, its config and its logs come off whether or not the install marker is
-present.
+Run `uninstall.cmd`. This removes the mod DLL and its log files, and leaves
+`HeadTracking.ini` in `Binaries` so your settings are there if you install again.
+The shim is the whole mod here, so there is no separate loader left behind, and
+the DLL and its logs come off whether or not the install marker is present.
 
 ## Building from Source
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Head tracking stays on while you aim down sights (e5fb487). The three ADS modes are gone, and with them their key (Insert / Ctrl+Shift+U). `[ADS] Mode` and `[Hotkeys] AdsModeKey` are no longer read.
+- `HeadTracking.ini` has a new layout. The first time this version starts, it converts the file once into the new layout and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+- Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+  - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+  - Reticle settings, and a key that toggled the reticle.
+- Hotkeys are written as key names, and each hotkey lists every key that triggers it, the Ctrl+Shift chord included: `ToggleKey=End, Ctrl+Shift+Y`. The chords can now be changed or removed like any other key.
+- Keys that moved or were renamed: `[Network] UDPPort` is `UdpPort`, `[General] AutoEnable` is `EnableOnStartup`, `[General] LogToFile` is `[Logging] WriteLog`, `[Hotkeys] CycleModeKey` is `CycleTrackingModeKey`, and `[Position] LimitX`, `LimitY`, `LimitYDown`, `LimitZ` and `LimitZBack` are `PositionLimitX` to `PositionLimitZBack`. `[Position] Enabled` is now the startup tracking mode, `[General] RotationEnabled` and `[Position] PositionEnabled`: `Enabled=false` converts to rotation only.
+- An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
+- The tracking mode you pick with Page Up / Ctrl+Shift+G is saved to `HeadTracking.ini` and is the mode the game starts in next time. End still turns head tracking on or off for the current session only.
+- `uninstall.cmd` keeps `HeadTracking.ini` and its `.pre-canonical` copies, so your settings survive a reinstall. The Nexus ZIP no longer carries `HeadTracking.ini`; the mod creates it the first time the game starts.
+
+### Removed
+
+- `[Reticle] FollowAim`. The crosshair always follows your aim.
+- The sensitivity and axis inversion settings (`[Sensitivity]`, and `[Position] SensitivityX/Y/Z` and `InvertX/Y/Z`). Set these in your tracker app instead. With these settings at their shipped defaults the camera moves as it did before.
+
 ## [0.1.0] - 2026-09-22
 
 ### Added

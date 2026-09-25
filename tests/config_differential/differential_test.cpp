@@ -2,20 +2,31 @@
 //
 // nms_config_differential <path to nms_config_oracle.exe>
 //
-// Every input is read two ways:
-//   oracle - v0.1.0's reader and startup code, the newest published build
-//            (nms_config_oracle, built from oracle/);
-//   import - the frozen reader in src/legacy_config/ and the startup code
-//            that ran on it.
+// Every input is read three ways:
+//   oracle    - v0.1.0's reader and startup code, the newest published build
+//               (nms_config_oracle, built from oracle/);
+//   import    - the frozen reader in src/legacy_config/ and the startup code
+//               that ran on it;
+//   migration - ConfigOwner on a copy: the import, the map into Config, the
+//               render, the commit, then the canonical reader and table, and
+//               the game's startup code on the result.
 //
 // Comparison 1, oracle against import, is what a player sees change that the
 // conversion did not cause: commits since v0.1.0 that changed how the file is
 // read. Every difference it finds must be one of kReaderChanges below.
+//
+// Comparison 2, import against migration, is the proof for the migration: no
+// difference apart from the approved drops the import records (core's
+// data/config-format.json). No default moves in this conversion, so the no-file
+// input has no exception of its own.
 
 #include "record.h"
 
+#include "core/config.h"
 #include "legacy_config/legacy_config.h"
 
+#include <cameraunlock/config/canonical_ini.h>
+#include <cameraunlock/config/config_owner.h>
 #include <cameraunlock/config/legacy_import.h>
 #include <cameraunlock/config/testing/ini_mutations.h>
 
@@ -332,6 +343,227 @@ std::string Describe(const Record& record) {
     return text;
 }
 
+const char* ModeName(cameraunlock::TrackingMode mode) {
+    switch (mode) {
+        case cameraunlock::TrackingMode::RotationAndPosition:
+            return "RotationAndPosition";
+        case cameraunlock::TrackingMode::RotationOnly:
+            return "RotationOnly";
+        case cameraunlock::TrackingMode::PositionOnly:
+            return "PositionOnly";
+    }
+    throw std::logic_error("not a tracking mode");
+}
+
+std::string ListBindings(const std::string& list) {
+    std::vector<std::pair<unsigned, int>> items;
+    for (const auto& binding : NMSHT::KeyBindings(list)) {
+        items.push_back({static_cast<unsigned>(binding.modifiers), binding.vk});
+    }
+    return Bindings(items);
+}
+
+std::optional<std::vector<std::uint32_t>> RuntimeCallers(const std::vector<std::uint32_t>& callers) {
+    if (callers.empty()) return std::nullopt;
+    return callers;
+}
+
+// A Config through the game's startup code (Mod::Initialize, HotkeyHandler::Start
+// and CameraHook::Install), in the names ImportRecord uses. The pose goes to the
+// tracking pipeline with no sensitivity and no inversion, and the crosshair
+// always follows the aim, so those fields read as what the pipeline applies.
+Record ConfigRecord(const NMSHT::Config& c) {
+    Record record;
+    record["field.udpPort"] = std::to_string(c.udpPort);
+    for (const char* name : {"field.yawSensitivity", "field.pitchSensitivity", "field.rollSensitivity",
+                             "field.posSensitivityX", "field.posSensitivityY", "field.posSensitivityZ"}) {
+        record[name] = Bits(1.0f);
+    }
+    for (const char* name : {"field.invertYaw", "field.invertPitch", "field.invertRoll", "field.posInvertX",
+                             "field.posInvertY", "field.posInvertZ"}) {
+        record[name] = Flag(false);
+    }
+    record["field.localSmoothing"] = Bits(c.localSmoothing);
+    record["field.remoteSmoothing"] = Bits(c.remoteSmoothing);
+    record["field.posLimitX"] = Bits(c.posLimitX);
+    record["field.posLimitY"] = Bits(c.posLimitY);
+    record["field.posLimitYDown"] = Bits(c.posLimitYDown);
+    record["field.posLimitZ"] = Bits(c.posLimitZ);
+    record["field.posLimitZBack"] = Bits(c.posLimitZBack);
+    record["field.reticleFollowsAim"] = Flag(true);
+    record["field.logToFile"] = Flag(c.writeLog);
+    record["field.diagnostics"] = Flag(c.diagnostics);
+    record["field.readWatch"] = Flag(c.readWatch);
+    record["field.aimCallerSweep"] = Flag(c.aimCallerSweep);
+    record["field.cullCallerSweep"] = Flag(c.cullCallerSweep);
+    record["field.callerCensus"] = Flag(c.callerCensus);
+    record["field.liveCallerOverrides"] = Flag(c.liveCallerOverrides);
+    record["field.writeWatch"] = Flag(c.writeWatch);
+    record["field.weaponProbe"] = Flag(c.weaponProbe);
+    record["field.cleanGlobalCycle"] = Flag(c.cleanGlobalCycle);
+    record["field.crosshairProbe"] = Flag(c.crosshairProbe);
+    record["field.reticleSweep"] = Flag(c.reticleSweep);
+    record["field.aimTransformCallers"] = Callers(RuntimeCallers(c.aimTransformCallers));
+    record["field.aimCopyCallers"] = Callers(RuntimeCallers(c.aimCopyCallers));
+    record["field.trackedTransformCallers"] = Callers(RuntimeCallers(c.trackedTransformCallers));
+    record["field.readWatchOffset"] = Hex(c.readWatchOffset);
+    if (c.sceneSampleRva.size() > 1) throw std::logic_error("a migrated SceneSampleRva lists more than one address");
+    record["field.sceneSampleRva"] =
+        SceneSample(c.sceneSampleRva.empty() ? std::nullopt : std::optional<std::uint32_t>(c.sceneSampleRva.front()));
+    record["startup.enabled"] = Flag(c.enableOnStartup);
+    record["startup.mode"] = ModeName(NMSHT::StartupTrackingMode(c));
+    record["hotkey.Toggle"] = ListBindings(c.toggleKey);
+    record["hotkey.CycleTrackingMode"] = ListBindings(c.cycleTrackingModeKey);
+    return record;
+}
+
+bool Dropped(const cfg::ImportResult& import, cfg::DropRule rule, const std::string& section, const std::string& key) {
+    for (const auto& dropped : import.dropped) {
+        if (dropped.rule == rule && dropped.section == section && dropped.key == key) return true;
+    }
+    return false;
+}
+
+// The pose-shaping settings the import reads, by record name.
+struct PoseShapingKey {
+    const char* field;
+    const char* section;
+    const char* key;
+};
+
+const PoseShapingKey kPoseShaping[] = {
+    {"field.yawSensitivity", "Sensitivity", "YawMultiplier"},
+    {"field.pitchSensitivity", "Sensitivity", "PitchMultiplier"},
+    {"field.rollSensitivity", "Sensitivity", "RollMultiplier"},
+    {"field.invertYaw", "Sensitivity", "InvertYaw"},
+    {"field.invertPitch", "Sensitivity", "InvertPitch"},
+    {"field.invertRoll", "Sensitivity", "InvertRoll"},
+    {"field.posSensitivityX", "Position", "SensitivityX"},
+    {"field.posSensitivityY", "Position", "SensitivityY"},
+    {"field.posSensitivityZ", "Position", "SensitivityZ"},
+    {"field.posInvertX", "Position", "InvertX"},
+    {"field.posInvertY", "Position", "InvertY"},
+    {"field.posInvertZ", "Position", "InvertZ"},
+};
+
+// The import listed the key in pose_shaping as a value the player changed, and
+// dropped it.
+bool PoseShapingDropped(const cfg::ImportResult& import, const PoseShapingKey& key) {
+    for (const auto& value : import.pose_shaping) {
+        if (value.section == key.section && value.key == key.key) {
+            return !value.folded && Dropped(import, cfg::DropRule::PoseShaping, key.section, key.key);
+        }
+    }
+    return false;
+}
+
+// Comparison 2 for one input: empty when every difference between the import
+// and the migration is one core's data/config-format.json approves, and the
+// import recorded it; otherwise what is left. `explained` gains the id of each
+// allowance a difference used.
+std::vector<std::string> UnexplainedMigrationDifferences(const Record& import, const cfg::ImportResult& result,
+                                                         const Record& migration, std::set<std::string>& explained) {
+    std::vector<std::string> left;
+    if (import.at("status") != migration.at("status")) {
+        left.push_back("status " + import.at("status") + " -> " + migration.at("status"));
+        return left;
+    }
+    std::set<std::string> names;
+    for (const auto& entry : import) names.insert(entry.first);
+    for (const auto& entry : migration) names.insert(entry.first);
+    for (const std::string& name : names) {
+        const auto i = import.find(name);
+        const auto m = migration.find(name);
+        if (i != import.end() && m != migration.end() && i->second == m->second) continue;
+        // The raw fields that decide the startup state and the bound keys are
+        // compared as that state (startup.*) and those bindings (hotkey.*).
+        if (name == "field.positionEnabled" || name == "field.autoEnable" || name == "field.toggleKey" ||
+            name == "field.cycleModeKey") {
+            continue;
+        }
+        // Approved change `pose_shaping`: a value the player moved off the
+        // shipped identity.
+        const auto shaping = std::find_if(std::begin(kPoseShaping), std::end(kPoseShaping),
+                                          [&name](const PoseShapingKey& key) { return name == key.field; });
+        if (shaping != std::end(kPoseShaping) && PoseShapingDropped(result, *shaping)) {
+            explained.insert("pose-shaping");
+            continue;
+        }
+        // Approved change `reticle`: the crosshair follows the aim whatever
+        // [Reticle] FollowAim said.
+        if (name == "field.reticleFollowsAim" && i != import.end() && i->second == "0" &&
+            Dropped(result, cfg::DropRule::Reticle, "Reticle", "FollowAim")) {
+            explained.insert("reticle");
+            continue;
+        }
+        // A caller list of none is carried as the one caller 0x0, which no
+        // call returns to (offset 0 of NMS.exe is its header), so the override
+        // still serves no caller.
+        if ((name == "field.aimTransformCallers" || name == "field.aimCopyCallers" ||
+             name == "field.trackedTransformCallers") &&
+            i != import.end() && m != migration.end() && i->second == "none" && m->second == Hex(0)) {
+            explained.insert("caller-none");
+            continue;
+        }
+        left.push_back(name + ": " + (i == import.end() ? "(none)" : i->second) + " -> " +
+                       (m == migration.end() ? "(none)" : m->second));
+    }
+    return left;
+}
+
+cfg::LegacyInput InputFor(const fs::path& path) { return cfg::LegacyInput{path.wstring(), path.string(), false}; }
+
+std::string RenderedDefaults() {
+    const cfg::ConfigTable<NMSHT::Config> table = NMSHT::ConfigTable();
+    cfg::RenderHeader header;
+    header.display_name = NMSHT::kGameDisplayName;
+    return cfg::RenderCanonical(table, table.defaults(), header);
+}
+
+// Runs the migration on the input at dir/HeadTracking.ini and checks what the
+// design asks of it beyond comparison 2. Returns the migration's record.
+Record Migrate(const Input& input, const fs::path& dir) {
+    const fs::path path = dir / "HeadTracking.ini";
+    cfg::ConfigOwner<NMSHT::Config> owner(NMSHT::ConfigOwnerOptions(path.wstring()));
+    const cfg::ConfigLoadResult<NMSHT::Config> loaded = owner.Load();
+    const std::string label = input.name + ": ";
+    Record record;
+    switch (loaded.status) {
+        case cfg::ConfigLoadStatus::Created:
+            record = ConfigRecord(loaded.config);
+            record["status"] = "absent";
+            Check(ReadBytes(path) == RenderedDefaults(), label + "a first launch writes the committed file's bytes");
+            return record;
+        case cfg::ConfigLoadStatus::Migrated:
+            break;
+        default:
+            Fail(label + "the migration loaded " + cfg::ConfigLoadStatusName(loaded.status) +
+                 (loaded.reason.empty() ? std::string() : ": " + loaded.reason));
+            return Record{{"status", cfg::ConfigLoadStatusName(loaded.status)}};
+    }
+    record = ConfigRecord(loaded.config);
+    record["status"] = "usable";
+
+    const std::string migrated = ReadBytes(path);
+    Check(cfg::HasCanonicalStamp(migrated), label + "the migrated file carries the stamp");
+    const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(migrated);
+    NMSHT::Config reread = NMSHT::ConfigTable().defaults();
+    Check(doc.IsReadable() && doc.diagnostics.empty() &&
+              cfg::ApplyCanonical(doc, NMSHT::ConfigTable(), reread).diagnostics.empty(),
+          label + "the migrated file reads without a diagnostic");
+    cfg::RenderHeader header;
+    header.display_name = NMSHT::kGameDisplayName;
+    Check(cfg::RenderCanonical(NMSHT::ConfigTable(), reread, header) == migrated,
+          label + "rendering the migrated settings gives the migrated bytes");
+    Check(ReadBytes(dir / "HeadTracking.ini.pre-canonical") == *input.bytes,
+          label + "HeadTracking.ini.pre-canonical holds the input");
+
+    cfg::ConfigOwner<NMSHT::Config> relaunch(NMSHT::ConfigOwnerOptions(path.wstring()));
+    Check(relaunch.Load().status == cfg::ConfigLoadStatus::Canonical && ReadBytes(path) == migrated,
+          label + "migrating the migrated file does nothing");
+    return record;
+}
+
 std::vector<std::pair<std::string, std::string>> Listing(const fs::path& dir) {
     std::vector<std::pair<std::string, std::string>> files;
     for (const auto& entry : fs::directory_iterator(dir)) {
@@ -378,6 +610,8 @@ int main(int argc, char** argv) {
                                                  std::to_string(inputs.size()) + " inputs");
 
     std::map<std::string, std::vector<std::string>> changesSeen;
+    std::size_t migrated = 0;
+    std::map<std::string, std::vector<std::string>> allowancesSeen;
     for (std::size_t i = 0; i < inputs.size() && i < published.size(); ++i) {
         const Input& input = inputs[i];
         const fs::path dir = root / std::to_string(i);
@@ -398,10 +632,22 @@ int main(int argc, char** argv) {
             SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_READONLY);
         }
         const auto before = Listing(readOnly);
-        NMSHT::legacy::Config ignored;
-        NMSHT::legacy::Read((readOnly / "HeadTracking.ini").string(), ignored, nullptr);
-        Check(Listing(readOnly) == before, input.name + ": the frozen reader writes nothing");
+        NMSHT::Config mapped;
+        const cfg::ImportResult result =
+            NMSHT::ConfigLegacyImport().run(InputFor(readOnly / "HeadTracking.ini"), mapped);
+        Check(Listing(readOnly) == before, input.name + ": the import writes nothing");
         if (input.bytes) SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
+
+        // Comparison 2 and the migration's own checks.
+        fs::create_directories(dir / "migrate");
+        if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
+        const Record migration = Migrate(input, dir / "migrate");
+        if (migration.at("status") == "usable") ++migrated;
+        std::set<std::string> allowances;
+        for (const std::string& difference : UnexplainedMigrationDifferences(import, result, migration, allowances)) {
+            Fail("comparison 2, " + input.name + ": " + difference);
+        }
+        for (const std::string& id : allowances) allowancesSeen[id].push_back(input.name);
     }
 
     std::printf("Comparison 1 (v0.1.0 against the frozen reader) over %zu inputs:\n", inputs.size());
@@ -411,6 +657,48 @@ int main(int argc, char** argv) {
         std::printf("  %s\n    %zu inputs, e.g. %s\n", change.description, count,
                     count == 0 ? "none" : seen->second.front().c_str());
         Check(count > 0, std::string("no input shows the recorded change '") + change.id + "'");
+    }
+
+    std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
+    const std::pair<const char*, const char*> kAllowances[] = {
+        {"pose-shaping", "approved change pose_shaping: a sensitivity or inversion off the shipped identity, dropped"},
+        {"reticle", "approved change reticle: [Reticle] FollowAim=false, dropped; the crosshair follows the aim"},
+        {"caller-none", "a caller list of none, carried as 0x0, which no call returns to"},
+    };
+    for (const auto& [id, description] : kAllowances) {
+        const auto seen = allowancesSeen.find(id);
+        const std::size_t count = seen == allowancesSeen.end() ? 0 : seen->second.size();
+        std::printf("  %s\n    %zu inputs, e.g. %s\n", description, count,
+                    count == 0 ? "none" : seen->second.front().c_str());
+        Check(count > 0, std::string("no input exercises the allowance '") + id + "'");
+    }
+
+    // The shipped files carry no pose shaping away from the identity, so the
+    // conversion folds nothing into the mod's axis code.
+    for (const char* file : kDataFiles) {
+        NMSHT::Config mapped;
+        const fs::path path = root / "shipped" / file;
+        WriteBytes(path, ReadBytes(kData / file));
+        const cfg::ImportResult result = NMSHT::ConfigLegacyImport().run(InputFor(path), mapped);
+        Check(result.pose_shaping.size() == std::size(kPoseShaping),
+              std::string(file) + ": the import lists every pose-shaping setting it reads");
+        for (const auto& value : result.pose_shaping) {
+            Check(value.folded, std::string(file) + ": [" + value.section + "] " + value.key + "=" + value.value +
+                                    " is the shipped " + value.shipped);
+        }
+    }
+
+    // A player who installed the published build and changed nothing gets the
+    // committed file.
+    const std::string committed = ReadBytes(fs::path(NMS_SOURCE_DIR) / "HeadTracking.ini");
+    Check(committed == RenderedDefaults(), "HeadTracking.ini is what the table renders");
+    for (const char* file : kDataFiles) {
+        const fs::path dir = root / "upgrade" / fs::path(file).parent_path() / fs::path(file).stem();
+        fs::create_directories(dir);
+        WriteBytes(dir / "HeadTracking.ini", ReadBytes(kData / file));
+        cfg::ConfigOwner<NMSHT::Config> owner(NMSHT::ConfigOwnerOptions((dir / "HeadTracking.ini").wstring()));
+        Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, std::string(file) + " migrates");
+        Check(ReadBytes(dir / "HeadTracking.ini") == committed, std::string(file) + " migrates to the committed file");
     }
 
     fs::remove_all(root);

@@ -1,55 +1,47 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
+#include <cameraunlock/config/config_concepts.g.h>
+#include <cameraunlock/config/config_owner.h>
+#include <cameraunlock/config/config_table.h>
+#include <cameraunlock/config/legacy_import.h>
 #include <cameraunlock/data/position_settings.h>
+#include <cameraunlock/input/key_bindings.h>
 #include <cameraunlock/math/smoothing_utils.h>
+#include <cameraunlock/tracking/tracking_mode.h>
 
 namespace NMSHT {
 
+// Every setting HeadTracking.ini holds. Its canonical format, the file's rows
+// and their comments are ConfigTable(); ConfigOwner is the only reader and
+// writer of the file.
 struct Config {
-    // Network
-    unsigned short udpPort = 4242;
+    std::uint16_t udpPort = 4242;
+    bool enableOnStartup = true;
+    // The tracking mode at startup, with positionEnabled.
+    bool rotationEnabled = true;
 
-    // Rotation sensitivity / invert
-    float yawSensitivity   = 1.0f;
-    float pitchSensitivity = 1.0f;
-    float rollSensitivity  = 1.0f;
-    bool  invertYaw   = false;
-    bool  invertPitch = false;
-    bool  invertRoll  = false;
-
-    // Smoothing. Which of the two applies is decided per connection from the
-    // packet source address; both cover rotation and position alike.
+    // Which of the two applies is decided per connection from the packet
+    // source address; both cover rotation and position alike.
     float localSmoothing  = static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
     float remoteSmoothing = static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
 
-    // Position
     bool  positionEnabled = true;
-    float posSensitivityX = 1.0f;
-    float posSensitivityY = 1.0f;
-    float posSensitivityZ = 1.0f;
     float posLimitX     = cameraunlock::PositionSettings{}.limit_x;
     float posLimitY     = cameraunlock::PositionSettings{}.limit_y;
     float posLimitYDown = cameraunlock::PositionSettings{}.limit_y_down;
     float posLimitZ     = cameraunlock::PositionSettings{}.limit_z;
     float posLimitZBack = cameraunlock::PositionSettings{}.limit_z_back;
-    bool  posInvertX = false;
-    bool  posInvertY = false;
-    bool  posInvertZ = false;
 
-    // Moves NMS's own crosshair onto the point the shot will cross, instead of
-    // leaving it pinned to the middle of the frame where it stops marking the
-    // shot the moment the head turns. Off restores the stock crosshair.
-    bool reticleFollowsAim = true;
+    std::string toggleKey = cameraunlock::config::schema::ConceptTraits<
+        cameraunlock::config::schema::Concept::ToggleKey>::kCanonicalDefault;
+    std::string cycleTrackingModeKey = cameraunlock::config::schema::ConceptTraits<
+        cameraunlock::config::schema::Concept::CycleTrackingModeKey>::kCanonicalDefault;
 
-    // Hotkeys (virtual key codes)
-    int toggleKey     = 0x23; // End
-    int cycleModeKey  = 0x21; // PageUp
-
-    // General
-    bool autoEnable = true;
-    bool logToFile  = true;
+    bool writeLog = true;
 
     // Writes engine-discovery detail (vtable layouts, call sites, transform
     // dumps) to the log. Off by default: it is the evidence a bug report needs,
@@ -75,10 +67,10 @@ struct Config {
     // censused they were being guessed from another store's addresses, which
     // are not call sites here at all. Diagnostic only.
     bool callerCensus = false;
-    // Re-reads AimTransformCallers / AimCopyCallers / TrackedTransformCallers
-    // from the ini every few seconds, so a candidate set can be tried without
-    // a rebuild and a save load. Separate from the census because counting
-    // every accessor call is expensive and the override is not.
+    // Applies the three caller lists below in place of the build profile's,
+    // and applies them again whenever the file changes, so a candidate set can
+    // be tried without a rebuild and a save load. Separate from the census
+    // because counting every accessor call is expensive and the override is not.
     bool liveCallerOverrides = false;
     bool writeWatch = false;
 
@@ -98,10 +90,38 @@ struct Config {
     // moves to the wrong place". Diagnostic.
     bool reticleSweep = false;
 
-    // Loads from the given INI path. Missing keys keep their defaults.
-    // Returns false if the file cannot be opened.
-    bool LoadFromIni (const std::string& path);
-    bool WriteDefault(const std::string& path) const;
+    // Caller RVAs for liveCallerOverrides. Empty keeps the build profile's.
+    std::vector<std::uint32_t> aimTransformCallers;
+    std::vector<std::uint32_t> aimCopyCallers;
+    std::vector<std::uint32_t> trackedTransformCallers;
+    // Byte offset into the camera transform that readWatch covers.
+    std::uint32_t readWatchOffset = 0;
+    // The scene sample hook's RVA in place of the build profile's: empty keeps
+    // the profile's, and one entry replaces it, 0x0 turning the hook off.
+    std::vector<std::uint32_t> sceneSampleRva;
 };
+
+// The game's name as cameraunlock-core's data/games.json spells it.
+inline constexpr const char* kGameDisplayName = "No Man's Sky";
+
+// At most this many callers of each override list are applied.
+inline constexpr std::size_t kMaxOverrideCallers = 160;
+
+cameraunlock::config::ConfigTable<Config> ConfigTable();
+
+// The import of a HeadTracking.ini an older build wrote: the frozen reader in
+// src/legacy_config/, and the map from what it read into Config.
+cameraunlock::config::LegacyImport<Config> ConfigLegacyImport();
+
+// The owner's options for the file at `path`, a full path.
+cameraunlock::config::ConfigOwnerOptions<Config> ConfigOwnerOptions(std::wstring path);
+
+// The tracking mode the RotationEnabled / PositionEnabled pair names. The
+// table never gives a config both false.
+cameraunlock::TrackingMode StartupTrackingMode(const Config& config);
+
+// A hotkey list from Config as bindings. Throws std::invalid_argument for a list
+// ParseKeyBindings refuses, which the table's hotkey codec never lets through.
+std::vector<cameraunlock::input::KeyBinding> KeyBindings(const std::string& list);
 
 } // namespace NMSHT

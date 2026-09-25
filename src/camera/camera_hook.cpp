@@ -20,6 +20,7 @@
 #include "core/game_state.h"
 #include "core/mod.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <intrin.h>
@@ -182,15 +183,15 @@ void DumpCallerCensus() {
     DumpOne(g_censusCopy, "copy");
 }
 
-// A caller list read out of the ini and re-read while the game runs, so a
-// subset can be tested without a rebuild, a relaunch and a save load. Finding
-// which callers decide aim is a search, and at eight minutes a round it is a
-// search nobody finishes; at five seconds a round it is twenty minutes.
+// A caller list read out of the ini and read again whenever the file changes
+// while the game runs, so a subset can be tested without a rebuild, a relaunch
+// and a save load. Finding which callers decide aim is a search, and at eight
+// minutes a round it is a search nobody finishes; at five seconds a round it is
+// twenty minutes.
 //
 // Published as a pointer into two buffers rather than edited in place, because
 // the detours read it from about a hundred threads while the census thread
 // writes it.
-constexpr int kMaxOverrideCallers = 160;
 struct CallerSet {
     std::uint32_t rva[kMaxOverrideCallers];
     int count;
@@ -215,38 +216,39 @@ bool CallerListed(const std::atomic<const CallerSet*>& live,
     return false;
 }
 
-void LoadOverride(int which, const char* key, const std::string& iniPath) {
-    char raw[4096] = {};
-    GetPrivateProfileStringA("Debug", key, "", raw, sizeof(raw), iniPath.c_str());
-    if (raw[0] == '\0') {
+void ApplyOverride(int which, const char* key, const std::vector<std::uint32_t>& callers) {
+    if (callers.empty()) {
         g_override[which].store(nullptr, std::memory_order_release);
         return;
     }
-    CallerSet& dst = g_overrideBuf[which][g_overrideTurn[which] ^= 1];
-    dst.count = 0;
-    for (const char* p = raw; *p != '\0';) {
-        while (*p == ' ' || *p == ',') ++p;
-        if (*p == '\0') break;
-        dst.rva[dst.count] = static_cast<std::uint32_t>(std::strtoul(p, nullptr, 16));
-        if (++dst.count >= kMaxOverrideCallers) break;
-        while (*p != '\0' && *p != ',') ++p;
+    if (callers.size() > kMaxOverrideCallers) {
+        HT_LOG("[Debug] %s lists %zu callers; the first %zu are used.", key, callers.size(),
+               kMaxOverrideCallers);
     }
+    CallerSet& dst = g_overrideBuf[which][g_overrideTurn[which] ^= 1];
+    dst.count = static_cast<int>(std::min(callers.size(), kMaxOverrideCallers));
+    std::copy(callers.begin(), callers.begin() + dst.count, dst.rva);
     g_override[which].store(&dst, std::memory_order_release);
 }
 
-void RefreshOverrides() {
-    const std::string ini = Mod::Instance().GameDir() + "\\" + kConfigFileName;
-    LoadOverride(0, "AimTransformCallers", ini);
-    LoadOverride(1, "AimCopyCallers", ini);
-    LoadOverride(2, "TrackedTransformCallers", ini);
+void ApplyOverrides(const Config& cfg) {
+    ApplyOverride(0, "AimTransformCallers", cfg.aimTransformCallers);
+    ApplyOverride(1, "AimCopyCallers", cfg.aimCopyCallers);
+    ApplyOverride(2, "TrackedTransformCallers", cfg.trackedTransformCallers);
 }
 
 constexpr DWORD kCensusDumpMs = 5000;
 
 void DiagnosticThread() {
+    bool overridesApplied = false;
     for (;;) {
         Sleep(kCensusDumpMs);
-        if (g_overridesOn) RefreshOverrides();
+        if (g_overridesOn && !overridesApplied) {
+            ApplyOverrides(Mod::Instance().GetConfig());
+            overridesApplied = true;
+        } else if (g_overridesOn) {
+            if (const auto reloaded = Mod::Instance().ReloadChangedConfig()) ApplyOverrides(*reloaded);
+        }
         if (!g_censusOn) {
             if (!g_overridesOn) return;
             continue;
@@ -777,7 +779,7 @@ void NoteNoPose() {
     g_saidDisabled = true;
     HT_LOG("Head tracking is INSTALLED and the engine is committing camera "
            "frames, but tracking is switched OFF. Press End (or Ctrl+Shift+Y), "
-           "or set [General] AutoEnable=true.");
+           "or set [General] EnableOnStartup=true.");
 }
 
 // This frame's head pose. False when the tracker has nothing to give.
@@ -1218,7 +1220,8 @@ void CameraHook::Install() {
     g_overridesOn = cfg.liveCallerOverrides;
     if (g_overridesOn) {
         HT_LOG("Live caller overrides on: [Debug] AimTransformCallers, AimCopyCallers "
-               "and TrackedTransformCallers are re-read from the ini every %d seconds.",
+               "and TrackedTransformCallers apply in %d seconds, and again whenever the "
+               "ini changes.",
                kCensusDumpMs / 1000);
     }
     if (g_censusOn || g_overridesOn) {
@@ -1322,9 +1325,7 @@ void CameraHook::Install() {
     }
     if (cfg.readWatch) {
         HT_LOG("Diag: read watch armed - it will burst once the scene has settled.");
-        StartReadWatch(GetPrivateProfileIntA(
-            "Debug", "ReadWatchOffset", 0,
-            (Mod::Instance().GameDir() + "\\" + kConfigFileName).c_str()));
+        StartReadWatch(cfg.readWatchOffset);
     }
     if (cfg.cleanGlobalCycle && g_cameraGlobalRva == 0) {
         HT_LOG("Diag: clean-global cycle NOT armed - this build profile pins no "
@@ -1377,12 +1378,13 @@ void CameraHook::Install() {
     InstallCommitHook(profile->cameraCommitRva, thirdPersonCommit,
                       profile->commitCameraReg);
     {
-        char raw[32] = {};
-        GetPrivateProfileStringA("Debug", "SceneSampleRva", "", raw, sizeof(raw),
-                                 (Mod::Instance().GameDir() + "\\" + kConfigFileName).c_str());
-        const std::uint32_t sampleRva =
-            raw[0] != 0 ? static_cast<std::uint32_t>(std::strtoul(raw, nullptr, 16))
-                           : profile->sceneSampleRva;
+        std::uint32_t sampleRva = profile->sceneSampleRva;
+        if (cfg.sceneSampleRva.size() == 1) {
+            sampleRva = cfg.sceneSampleRva.front();
+        } else if (!cfg.sceneSampleRva.empty()) {
+            HT_LOG("[Debug] SceneSampleRva lists %zu addresses and takes one, so the "
+                   "build's own is used.", cfg.sceneSampleRva.size());
+        }
         g_sceneSampling = sampleRva != 0;
         InstallSceneSampleHook(sampleRva);
     }
@@ -1394,15 +1396,9 @@ void CameraHook::Install() {
                               profile->aimCopyCallers.size() != 0 ||
                               profile->aimTransformCallers.size() != 0);
     InstallScreenProjection(profile->worldToScreenRva);
-    if (cfg.reticleFollowsAim) {
-        InstallReticle(profile->nguiFindElementRva, profile->reticleLookupReturnRva,
-                       profile->gfxManagerPtrRva, cfg.reticleSweep,
-                       profile->nguiRenderRva, profile->reticleRenderReturnRva);
-    } else {
-        HT_LOG("Reticle: [Reticle] FollowAim is off, so NMS draws its crosshair "
-               "at screen centre. It marks the shot only while your head is "
-               "centred.");
-    }
+    InstallReticle(profile->nguiFindElementRva, profile->reticleLookupReturnRva,
+                   profile->gfxManagerPtrRva, cfg.reticleSweep,
+                   profile->nguiRenderRva, profile->reticleRenderReturnRva);
 
     g_sourceTarget = reinterpret_cast<void*>(mgr.vfuncs[activeSlot]);
     st = hm.CreateHook(g_sourceTarget, reinterpret_cast<void*>(&SourceDetour),

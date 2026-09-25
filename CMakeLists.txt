@@ -109,10 +109,12 @@ endforeach()
 target_link_libraries(udp_recovery_test PRIVATE cameraunlock ws2_32)
 set_tests_properties(udp_recovery_test PROPERTIES TIMEOUT 120)
 
-# The config suite drives the mod's own reader against real ini files on disk,
-# so it compiles src/core/config.cpp rather than a copy of its rules.
+# The config suite holds the committed HeadTracking.ini to the table and drives
+# the real config owner on real files. Its --render-config mode is what
+# `pixi run render-config` runs.
 add_executable(config_test tests/config_test.cpp src/core/config.cpp
     src/legacy_config/legacy_config.cpp)
+target_compile_definitions(config_test PRIVATE NMS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 set_target_properties(config_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 target_include_directories(config_test PRIVATE
@@ -164,6 +166,7 @@ target_link_libraries(nms_config_oracle PRIVATE cameraunlock ws2_32)
 
 add_executable(nms_config_differential
     ${NMS_DIFFERENTIAL_DIR}/differential_test.cpp
+    src/core/config.cpp
     src/legacy_config/legacy_config.cpp)
 target_include_directories(nms_config_differential PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

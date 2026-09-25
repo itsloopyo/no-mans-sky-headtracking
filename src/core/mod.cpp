@@ -11,58 +11,45 @@ Mod& Mod::Instance() {
     return s_instance;
 }
 
-static std::string DirectoryOf(HMODULE hModule) {
-    char path[MAX_PATH] = {};
-    DWORD n = GetModuleFileNameA(hModule, path, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) return {};
-    std::string s(path, n);
-    auto slash = s.find_last_of("\\/");
-    return (slash == std::string::npos) ? std::string{} : s.substr(0, slash);
+static std::wstring DirectoryOf(HMODULE hModule) {
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = GetModuleFileNameW(hModule, path.data(), static_cast<DWORD>(path.size()));
+        if (n == 0) return {};
+        if (n < path.size()) {
+            path.resize(n);
+            break;
+        }
+        path.resize(path.size() * 2);
+    }
+    const auto slash = path.find_last_of(L"\\/");
+    return slash == std::wstring::npos ? std::wstring{} : path.substr(0, slash);
+}
+
+static void LogLines(const std::vector<std::string>& lines) {
+    for (const std::string& line : lines) HT_LOG("%s", line.c_str());
 }
 
 bool Mod::Initialize(HMODULE hModule) {
-    m_gameDir = DirectoryOf(hModule);
-    if (m_gameDir.empty()) return false;
+    const std::wstring gameDir = DirectoryOf(hModule);
+    if (gameDir.empty()) return false;
 
-    const std::string iniPath = m_gameDir + "\\" + kConfigFileName;
-
-    // Load INI (write defaults if missing).
-    DWORD attrs = GetFileAttributesA(iniPath.c_str());
-    const bool iniAvailable =
-        attrs != INVALID_FILE_ATTRIBUTES || m_config.WriteDefault(iniPath);
-    // Opened before the config load so the loader's own diagnostics (retired
-    // keys, unreadable INI) reach the file instead of being dropped.
+    // Opened before the config load so the old reader's diagnostics, when a
+    // file an earlier build wrote is converted, reach the file.
     OpenLogFile();
-    const bool configLoaded = m_config.LoadFromIni(iniPath);
-    if (!m_config.logToFile) CloseLogFile();
+    m_configOwner.emplace(ConfigOwnerOptions(gameDir + L"\\" + kConfigFileName));
+    const auto loaded = m_configOwner->Load();
+    m_config = loaded.config;
+    if (!m_config.writeLog) CloseLogFile();
 
     HT_LOG("=== %s v%s ===", kModName, kModVersion);
-    HT_LOG("Initialize: dir=%s", m_gameDir.c_str());
-    if (!iniAvailable) {
-        HT_LOG("WARN: could not write %s; settings will not persist.", iniPath.c_str());
-    }
-    if (!configLoaded) {
-        HT_LOG("WARN: could not read %s - using built-in defaults.", iniPath.c_str());
-    }
-
-    // Rotation pipeline.
-    cameraunlock::SensitivitySettings sens;
-    sens.yaw   = m_config.yawSensitivity;
-    sens.pitch = m_config.pitchSensitivity;
-    sens.roll  = m_config.rollSensitivity;
-    sens.invert_yaw   = m_config.invertYaw;
-    sens.invert_pitch = m_config.invertPitch;
-    sens.invert_roll  = m_config.invertRoll;
-    m_session.GetProcessor().SetSensitivity(sens);
+    HT_LOG("Initialize: dir=%ls", gameDir.c_str());
+    HT_LOG("Config: %s.", cameraunlock::config::ConfigLoadStatusName(loaded.status));
+    LogLines(loaded.log);
+    if (!loaded.reason.empty()) HT_LOG("%s", loaded.reason.c_str());
 
     // Position pipeline.
     cameraunlock::PositionSettings pos;
-    pos.sensitivity_x = m_config.posSensitivityX;
-    pos.sensitivity_y = m_config.posSensitivityY;
-    pos.sensitivity_z = m_config.posSensitivityZ;
-    pos.invert_x = m_config.posInvertX;
-    pos.invert_y = m_config.posInvertY;
-    pos.invert_z = m_config.posInvertZ;
     pos.limit_x = m_config.posLimitX;
     pos.limit_y = m_config.posLimitY;
     pos.limit_y_down = m_config.posLimitYDown;
@@ -78,9 +65,7 @@ bool Mod::Initialize(HMODULE hModule) {
     m_session.SetPositionSettings(pos);
     HT_LOG("Smoothing: local=%.2f remote=%.2f",
            m_config.localSmoothing, m_config.remoteSmoothing);
-    m_session.SetMode(m_config.positionEnabled
-                          ? cameraunlock::TrackingMode::RotationAndPosition
-                          : cameraunlock::TrackingMode::RotationOnly);
+    m_session.SetMode(StartupTrackingMode(m_config));
 
     // UDP receiver.
     m_receiver.SetLog([](const std::string& msg) {
@@ -103,7 +88,7 @@ bool Mod::Initialize(HMODULE hModule) {
     // armed, and a frame that lands while m_enabled is still false latches the
     // one-shot "tracking is switched OFF" line - which is never corrected, and
     // which a previous "still no head tracking" report was traced to.
-    m_enabled.store(m_config.autoEnable, std::memory_order_release);
+    m_enabled.store(m_config.enableOnStartup, std::memory_order_release);
 
     CameraHook::Instance().Install();
 
@@ -119,7 +104,8 @@ void Mod::SetEnabled(bool enabled) {
 void Mod::Toggle() { SetEnabled(!IsEnabled()); }
 
 void Mod::CycleTrackingMode() {
-    switch (m_session.CycleMode()) {
+    const cameraunlock::TrackingMode mode = m_session.CycleMode();
+    switch (mode) {
     case cameraunlock::TrackingMode::RotationAndPosition:
         HT_LOG("Tracking mode: rotation and position");
         break;
@@ -130,6 +116,24 @@ void Mod::CycleTrackingMode() {
         HT_LOG("Tracking mode: position only (rotation disabled)");
         break;
     }
+
+    // Applied above, saved here: a save that fails leaves the session on the
+    // new mode and the file on the old one.
+    const auto channels = cameraunlock::EncodeTrackingMode(mode);
+    const auto saved = m_configOwner->Save([channels](Config& c) {
+        c.rotationEnabled = channels.rotation_enabled;
+        c.positionEnabled = channels.position_enabled;
+    });
+    LogLines(saved.log);
+    if (!saved.reason.empty()) HT_LOG("%s", saved.reason.c_str());
+}
+
+std::optional<Config> Mod::ReloadChangedConfig() {
+    if (!m_configOwner->FileChanged()) return std::nullopt;
+    auto reloaded = m_configOwner->Reload();
+    LogLines(reloaded.log);
+    if (!reloaded.reason.empty()) HT_LOG("%s", reloaded.reason.c_str());
+    return std::move(reloaded.config);
 }
 
 void Mod::NoteConnectionState() {

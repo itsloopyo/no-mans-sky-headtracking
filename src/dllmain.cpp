@@ -15,7 +15,7 @@ static constexpr DWORD kInitDelayMs = 3000;
 static DWORD WINAPI InitThread(LPVOID) {
     Sleep(kInitDelayMs);
     // Both outcomes go to the early diagnostic, not just the failure. It is the
-    // only channel that survives [General] LogToFile=false, and without the
+    // only channel that survives [Logging] WriteLog=false, and without the
     // success line "the shim loaded but the init thread is stuck" and "init ran,
     // read the log" are the same empty file.
     if (NMSHT::Mod::Instance().Initialize(g_hModule)) {
