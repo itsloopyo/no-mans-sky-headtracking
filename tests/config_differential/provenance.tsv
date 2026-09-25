@@ -1,10 +1,11 @@
 # What the differential test compares, and where each file came from.
 # Columns: role, source (commit:path, or the path in this repo), sha256 of the bytes.
-# v0.1.0 (c18a361) is the only published build: there is no dev pre-release and no predecessor
-# repo. It pinned core c480d8a. Every core source its reader compiles holds the same bytes at
-# c480d8a and at the current pin, apart from ads/ads_mode.h, which core has since removed and
-# the oracle carries as a copy. Comparison 1 is not empty by construction: the frozen reader is
-# 02b6f3e's src/core/config.cpp, which differs from v0.1.0's (e5fb487 retired the ADS mode).
+# v0.1.0 (commit 4072bf3, tag object c18a361) is the only published build: there is no dev
+# pre-release and no predecessor repo. It pinned core c480d8a. Every core source its reader
+# compiles holds the same bytes at c480d8a and at the current pin, apart from ads/ads_mode.h,
+# which core has since removed and the oracle carries as a copy. Comparison 1 is not empty by
+# construction: the frozen reader is 02b6f3e's src/core/config.cpp, which differs from v0.1.0's
+# (e5fb487 retired the ADS mode).
 published reader	v0.1.0:src/core/config.cpp	7ddc3105db8ce454a93d407e029ce65d3fe0f4b2d70d407319a34c0f8db69f8e
 published reader	v0.1.0:src/core/config.h	37d479a87713236016ff4c5f8d5840a1f3383918e53a8ea08df427a88e0bf25c
 published reader	v0.1.0:src/core/debug_log.h	f9d5221e0a745777eb54eaab121653b6eaa4306a020d573d442c9403bd835e23
