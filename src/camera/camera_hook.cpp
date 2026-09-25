@@ -778,8 +778,9 @@ void NoteNoPose() {
     if (g_saidDisabled) return;
     g_saidDisabled = true;
     HT_LOG("Head tracking is INSTALLED and the engine is committing camera "
-           "frames, but tracking is switched OFF. Press End (or Ctrl+Shift+Y), "
-           "or set [General] EnableOnStartup=true.");
+           "frames, but tracking is switched OFF. Press a key from [Hotkeys] ToggleKey (%s), "
+           "or set [General] EnableOnStartup=true.",
+           Mod::Instance().GetConfig().toggleKey.c_str());
 }
 
 // This frame's head pose. False when the tracker has nothing to give.
