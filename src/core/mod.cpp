@@ -34,19 +34,22 @@ bool Mod::Initialize(HMODULE hModule) {
     const std::wstring gameDir = DirectoryOf(hModule);
     if (gameDir.empty()) return false;
 
-    // Opened before the config load so the old reader's diagnostics, when a
-    // file an earlier build wrote is converted, reach the file.
+    // Open until the config load has been logged, whatever WriteLog says, as
+    // the published build kept it open for its loader: converting a file an
+    // earlier build wrote names every value it drops and every key it does not
+    // carry, a deferral names its reason, and a player who turned the log off
+    // still needs those lines, and the version they came from, in the file.
     OpenLogFile();
     m_configOwner.emplace(ConfigOwnerOptions(gameDir + L"\\" + kConfigFileName));
     const auto loaded = m_configOwner->Load();
     m_config = loaded.config;
-    if (!m_config.writeLog) CloseLogFile();
 
     HT_LOG("=== %s v%s ===", kModName, kModVersion);
     HT_LOG("Initialize: dir=%ls", gameDir.c_str());
     HT_LOG("Config: %s.", cameraunlock::config::ConfigLoadStatusName(loaded.status));
     LogLines(loaded.log);
     if (!loaded.reason.empty()) HT_LOG("%s", loaded.reason.c_str());
+    if (!m_config.writeLog) CloseLogFile();
 
     // Position pipeline.
     cameraunlock::PositionSettings pos;
