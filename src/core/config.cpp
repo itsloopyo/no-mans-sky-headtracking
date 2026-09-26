@@ -95,10 +95,10 @@ namespace {
 // A legacy action: its code in the file, which fired while Ctrl and Shift were
 // not both held, and the Ctrl+Shift letter the build fixed in code. The frozen
 // reader keeps only a code GetAsyncKeyState can poll that is not a modifier, so
-// every code here has a binding.
-std::string WithChord(int code, char letter) {
-    return cameraunlock::input::FormatKeyBindings(
-        {KeyBinding{KeyModifiers::kNone, code}, KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
+// every code here has a binding and N1 never drops one.
+std::string WithChord(int code, char letter, const char* key, std::vector<cfg::DroppedValue>& dropped) {
+    return cfg::LegacyVirtualKeyToBindings(code, "Hotkeys", key, dropped) + ", " +
+           cameraunlock::input::FormatKeyBindings({KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
 }
 
 // A legacy caller list. The published build kept the build's own callers for
@@ -154,8 +154,8 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     // The crosshair always follows the aim now; only a file that turned that
     // off loses something.
     if (!read.reticleFollowsAim) dropped.push_back({cfg::DropRule::Reticle, "Reticle", "FollowAim", "false"});
-    out.toggleKey = WithChord(read.toggleKey, 'Y');
-    out.cycleTrackingModeKey = WithChord(read.cycleModeKey, 'G');
+    out.toggleKey = WithChord(read.toggleKey, 'Y', "ToggleKey", dropped);
+    out.cycleTrackingModeKey = WithChord(read.cycleModeKey, 'G', "CycleModeKey", dropped);
     out.writeLog = read.logToFile;
     out.diagnostics = read.diagnostics;
     out.readWatch = read.readWatch;
@@ -193,12 +193,14 @@ cfg::LegacyImport<Config> ConfigLegacyImport() {
     return import;
 }
 
-cfg::ConfigOwnerOptions<Config> ConfigOwnerOptions(std::wstring path) {
+cfg::ConfigOwnerOptions<Config> ConfigOwnerOptions(const std::filesystem::path& folder, cfg::DefaultsFile defaults) {
     cfg::ConfigOwnerOptions<Config> options;
-    options.path = std::move(path);
+    options.path = (folder / kConfigFileName).wstring();
     options.table = ConfigTable();
     options.import = ConfigLegacyImport();
+    options.legacy_path = (folder / kLegacyFileName).wstring();
     options.header.display_name = kGameDisplayName;
+    options.defaults = std::move(defaults);
     return options;
 }
 

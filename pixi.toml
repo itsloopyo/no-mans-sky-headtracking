@@ -25,9 +25,10 @@ test = { cmd = "ctest --test-dir build -C Debug --output-on-failure", depends-on
 # made to build the tree twice.
 test-release = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
 
-# Rewrite HeadTracking.ini, the file the mod creates at first launch, from the config
-# table after a change to a row, a comment or a default; config_test fails on the old
-# file until this runs. encode-seed re-encodes the launcher seed that writes it.
+# Rewrite HeadTracking.ini, the committed copy of the CameraUnlock.ini the mod creates at
+# first launch, from the config table after a change to a row, a comment or a default;
+# config_test fails on the old file until this runs. encode-seed then rewrites the
+# launcher manifest's config descriptor per_game from it.
 render-config = { cmd = "build/tests/Release/config_test.exe --render-config HeadTracking.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build-release"] }
 
 # Checks this repo's newest release/*-installer.zip against its launcher manifest, and

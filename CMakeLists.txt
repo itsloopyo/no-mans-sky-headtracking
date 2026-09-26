@@ -109,9 +109,9 @@ endforeach()
 target_link_libraries(udp_recovery_test PRIVATE cameraunlock ws2_32)
 set_tests_properties(udp_recovery_test PROPERTIES TIMEOUT 120)
 
-# The config suite holds the committed HeadTracking.ini to the table and drives
-# the real config owner on real files. Its --render-config mode is what
-# `pixi run render-config` runs.
+# The config suite holds HeadTracking.ini, the committed CameraUnlock.ini, to the
+# table's fresh render and drives the real config owner on real files. Its
+# --render-config mode is what `pixi run render-config` runs.
 add_executable(config_test tests/config_test.cpp src/core/config.cpp
     src/legacy_config/legacy_config.cpp)
 target_compile_definitions(config_test PRIVATE NMS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -185,6 +185,12 @@ foreach(nms_differential_target nms_config_oracle nms_config_differential)
 endforeach()
 add_test(NAME nms_config_differential
          COMMAND nms_config_differential $<TARGET_FILE:nms_config_oracle>)
+# Core's canonical config lint over the committed file and every file the
+# differential test migrated, which it writes beside itself under migrated\.
+add_test(NAME nms_config_lint COMMAND node
+         ${NMS_DIFFERENTIAL_DIR}/lint-migrated.mjs
+         $<TARGET_FILE_DIR:nms_config_differential>/migrated)
+set_tests_properties(nms_config_lint PROPERTIES DEPENDS nms_config_differential)
 
 # What the differential test compiles is pinned by hash, line endings aside: the
 # oracle's files must stay v0.1.0's (git show v0.1.0:<path>, and core c480d8a's

@@ -17,6 +17,6 @@
 # normalising them would test other files.
 tests/config_differential/data/** -text
 
-# The committed config is the bytes the mod writes at first launch, CRLF and all;
-# config_test compares the two byte for byte.
+# The committed config is the bytes the mod writes to CameraUnlock.ini at first
+# launch, CRLF and all; config_test compares the two byte for byte.
 HeadTracking.ini -text

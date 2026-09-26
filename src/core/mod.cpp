@@ -40,13 +40,13 @@ bool Mod::Initialize(HMODULE hModule) {
     // carry, a deferral names its reason, and a player who turned the log off
     // still needs those lines, and the version they came from, in the file.
     OpenLogFile();
-    m_configOwner.emplace(ConfigOwnerOptions(gameDir + L"\\" + kConfigFileName));
+    m_configOwner.emplace(ConfigOwnerOptions(gameDir, cameraunlock::config::DefaultsFile::PerUser()));
     const auto loaded = m_configOwner->Load();
     m_config = loaded.config;
 
     HT_LOG("=== %s v%s ===", kModName, kModVersion);
     HT_LOG("Initialize: dir=%ls", gameDir.c_str());
-    HT_LOG("Config: %s.", cameraunlock::config::ConfigLoadStatusName(loaded.status));
+    HT_LOG("Config: %s, %ls.", cameraunlock::config::ConfigLoadStatusName(loaded.status), kConfigFileName);
     LogLines(loaded.log);
     if (!loaded.reason.empty()) HT_LOG("%s", loaded.reason.c_str());
     if (!m_config.writeLog) CloseLogFile();

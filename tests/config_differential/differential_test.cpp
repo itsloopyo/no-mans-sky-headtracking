@@ -7,9 +7,11 @@
 //               (nms_config_oracle, built from oracle/);
 //   import    - the frozen reader in src/legacy_config/ and the startup code
 //               that ran on it;
-//   migration - ConfigOwner on a copy: the import, the map into Config, the
-//               render, the commit, then the canonical reader and table, and
-//               the game's startup code on the result.
+//   migration - ConfigOwner on a folder holding a copy as HeadTracking.ini:
+//               the import, the map into Config, the render into a new
+//               CameraUnlock.ini, then the canonical reader and table, and the
+//               game's startup code on the result. Every owner reads a scratch
+//               Defaults.ini, never the developer's own.
 //
 // Comparison 1, oracle against import, is what a player sees change that the
 // conversion did not cause: commits since v0.1.0 that changed how the file is
@@ -516,54 +518,128 @@ std::vector<std::string> UnexplainedMigrationDifferences(const Record& import, c
 cfg::LegacyInput InputFor(const fs::path& path) { return cfg::LegacyInput{path.wstring(), path.string(), false}; }
 
 std::string RenderedDefaults() {
-    const cfg::ConfigTable<NMSHT::Config> table = NMSHT::ConfigTable();
     cfg::RenderHeader header;
     header.display_name = NMSHT::kGameDisplayName;
-    return cfg::RenderCanonical(table, table.defaults(), header);
+    return cfg::RenderCanonicalFresh(NMSHT::ConfigTable(), header);
 }
 
-// Runs the migration on the input at dir/HeadTracking.ini and checks what the
-// design asks of it beyond comparison 2. Returns the migration's record.
-Record Migrate(const Input& input, const fs::path& dir) {
-    const fs::path path = dir / "HeadTracking.ini";
-    cfg::ConfigOwner<NMSHT::Config> owner(NMSHT::ConfigOwnerOptions(path.wstring()));
-    const cfg::ConfigLoadResult<NMSHT::Config> loaded = owner.Load();
-    const std::string label = input.name + ": ";
+cfg::ConfigOwnerOptions<NMSHT::Config> Options(const fs::path& folder, const fs::path& defaults) {
+    return NMSHT::ConfigOwnerOptions(folder, cfg::DefaultsFile::At(defaults.wstring()));
+}
+
+// A file's bytes, last write time and attributes, which no load may change.
+struct FileState {
+    std::string bytes;
+    unsigned long long written = 0;
+    DWORD attributes = 0;
+    bool operator==(const FileState& other) const {
+        return bytes == other.bytes && written == other.written && attributes == other.attributes;
+    }
+};
+
+std::optional<FileState> StateOf(const fs::path& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return std::nullopt;
+        throw std::runtime_error("cannot read the attributes of " + path.string());
+    }
+    FileState state;
+    state.bytes = ReadBytes(path);
+    state.written = (static_cast<unsigned long long>(data.ftLastWriteTime.dwHighDateTime) << 32) |
+                    data.ftLastWriteTime.dwLowDateTime;
+    state.attributes = data.dwFileAttributes;
+    return state;
+}
+
+std::set<std::string> Names(const fs::path& dir) {
+    std::set<std::string> names;
+    for (const auto& entry : fs::directory_iterator(dir)) names.insert(entry.path().filename().string());
+    return names;
+}
+
+bool LogSays(const std::vector<std::string>& log, const std::string& text) {
+    for (const std::string& line : log) {
+        if (line.find(text) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Runs the owner on `folder`, which holds the input as HeadTracking.ini (or
+// nothing), with Defaults.ini at `defaults`, checks what the design asks of the
+// migration beyond comparison 2, and returns the migration's record. A file it
+// creates by migrating goes into `migratedFiles`.
+Record Migrate(const Input& input, const fs::path& folder, const fs::path& defaults,
+               std::set<std::string>& migratedFiles) {
+    const fs::path legacy = folder / "HeadTracking.ini";
+    const fs::path path = folder / "CameraUnlock.ini";
+    const std::string label = input.name + " (" + folder.filename().string() + "): ";
+    const std::optional<FileState> legacyBefore = StateOf(legacy);
+    const std::set<std::string> both{"CameraUnlock.ini", "HeadTracking.ini"};
+
+    const cfg::ConfigLoadResult<NMSHT::Config> loaded = cfg::ConfigOwner<NMSHT::Config>(Options(folder, defaults)).Load();
+    Check(StateOf(legacy) == legacyBefore, label + "the load leaves the legacy file's bytes, write time and attributes");
     Record record;
     switch (loaded.status) {
         case cfg::ConfigLoadStatus::Created:
             record = ConfigRecord(loaded.config);
             record["status"] = "absent";
             Check(ReadBytes(path) == RenderedDefaults(), label + "a first launch writes the committed file's bytes");
-            return record;
-        case cfg::ConfigLoadStatus::Migrated:
+            Check(Names(folder) == std::set<std::string>{"CameraUnlock.ini"},
+                  label + "a first launch creates CameraUnlock.ini and nothing else");
             break;
+        case cfg::ConfigLoadStatus::Migrated: {
+            record = ConfigRecord(loaded.config);
+            record["status"] = "usable";
+            Check(Names(folder) == both, label + "the folder holds the legacy file and CameraUnlock.ini and nothing else");
+            const std::string migrated = ReadBytes(path);
+            Check(cfg::HasCanonicalStamp(migrated), label + "the migrated file carries the stamp");
+            const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(migrated);
+            NMSHT::Config reread = NMSHT::ConfigTable().defaults();
+            Check(doc.IsReadable() && doc.diagnostics.empty() &&
+                      cfg::ApplyCanonical(doc, NMSHT::ConfigTable(), reread).diagnostics.empty(),
+                  label + "the migrated file reads without a diagnostic");
+            migratedFiles.insert(migrated);
+            break;
+        }
         default:
             Fail(label + "the migration loaded " + cfg::ConfigLoadStatusName(loaded.status) +
                  (loaded.reason.empty() ? std::string() : ": " + loaded.reason));
             return Record{{"status", cfg::ConfigLoadStatusName(loaded.status)}};
     }
-    record = ConfigRecord(loaded.config);
-    record["status"] = "usable";
 
-    const std::string migrated = ReadBytes(path);
-    Check(cfg::HasCanonicalStamp(migrated), label + "the migrated file carries the stamp");
-    const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(migrated);
-    NMSHT::Config reread = NMSHT::ConfigTable().defaults();
-    Check(doc.IsReadable() && doc.diagnostics.empty() &&
-              cfg::ApplyCanonical(doc, NMSHT::ConfigTable(), reread).diagnostics.empty(),
-          label + "the migrated file reads without a diagnostic");
-    cfg::RenderHeader header;
-    header.display_name = NMSHT::kGameDisplayName;
-    Check(cfg::RenderCanonical(NMSHT::ConfigTable(), reread, header) == migrated,
-          label + "rendering the migrated settings gives the migrated bytes");
-    Check(ReadBytes(dir / "HeadTracking.ini.pre-canonical") == *input.bytes,
-          label + "HeadTracking.ini.pre-canonical holds the input");
-
-    cfg::ConfigOwner<NMSHT::Config> relaunch(NMSHT::ConfigOwnerOptions(path.wstring()));
-    Check(relaunch.Load().status == cfg::ConfigLoadStatus::Canonical && ReadBytes(path) == migrated,
-          label + "migrating the migrated file does nothing");
+    // The next start reads CameraUnlock.ini, imports nothing and writes nothing.
+    const std::optional<FileState> created = StateOf(path);
+    const cfg::ConfigLoadResult<NMSHT::Config> relaunched =
+        cfg::ConfigOwner<NMSHT::Config>(Options(folder, defaults)).Load();
+    Check(relaunched.status == cfg::ConfigLoadStatus::Canonical, label + "the next start reads CameraUnlock.ini");
+    Record again = ConfigRecord(relaunched.config);
+    again["status"] = record.at("status");
+    Check(again == record, label + "the next start gives the same settings");
+    Check(StateOf(path) == created && StateOf(legacy) == legacyBefore, label + "the next start changes neither file");
+    Check(!legacyBefore || LogSays(relaunched.log, "is left as it was and is not read"),
+          label + "the next start logs that the legacy file is not read");
     return record;
+}
+
+// A Defaults.ini holding a value other than the built-in one on every global
+// row the table binds. The tracking mode pair names position only, since both
+// false is not a mode.
+const char* const kSkewedDefaults =
+    "[CameraUnlock]\r\nConfigFormat=1\r\n\r\n"
+    "[Network]\r\nUdpPort=5252\r\n\r\n"
+    "[General]\r\nEnableOnStartup=false\r\nRotationEnabled=false\r\n\r\n"
+    "[Smoothing]\r\nLocalSmoothing=0.5\r\nRemoteSmoothing=0.5\r\n\r\n"
+    "[Position]\r\nPositionEnabled=true\r\nPositionLimitX=0.5\r\nPositionLimitY=0.5\r\n"
+    "PositionLimitYDown=0.5\r\nPositionLimitZ=0.5\r\nPositionLimitZBack=0.5\r\n\r\n"
+    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\n";
+
+// Beside this executable, where the canonical config lint (lint-migrated.mjs)
+// reads the migrated files after this test.
+fs::path MigratedFolder() {
+    std::vector<wchar_t> exe(MAX_PATH);
+    const DWORD length = GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
+    if (length == 0 || length >= exe.size()) throw std::runtime_error("cannot find this executable's path");
+    return fs::path(std::wstring(exe.data(), length)).parent_path() / "migrated";
 }
 
 std::vector<std::pair<std::string, std::string>> Listing(const fs::path& dir) {
@@ -614,6 +690,7 @@ int main(int argc, char** argv) {
     std::map<std::string, std::vector<std::string>> changesSeen;
     std::size_t migrated = 0;
     std::map<std::string, std::vector<std::string>> allowancesSeen;
+    std::set<std::string> migratedFiles;
     for (std::size_t i = 0; i < inputs.size() && i < published.size(); ++i) {
         const Input& input = inputs[i];
         const fs::path dir = root / std::to_string(i);
@@ -640,16 +717,40 @@ int main(int argc, char** argv) {
         Check(Listing(readOnly) == before, input.name + ": the import writes nothing");
         if (input.bytes) SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
 
-        // Comparison 2 and the migration's own checks.
+        // Comparison 2 and the migration's own checks. Each input migrates three
+        // times: with Defaults.ini at the built-in values, from a read-only
+        // legacy file, and with a Defaults.ini that differs on every global row.
+        // All three must give the same settings, since the migration writes a
+        // value wherever the imported one is not what default gives.
         fs::create_directories(dir / "migrate");
         if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
-        const Record migration = Migrate(input, dir / "migrate");
+        const Record migration = Migrate(input, dir / "migrate", dir / "defaults" / "Defaults.ini", migratedFiles);
         if (migration.at("status") == "usable") ++migrated;
         std::set<std::string> allowances;
         for (const std::string& difference : UnexplainedMigrationDifferences(import, result, migration, allowances)) {
             Fail("comparison 2, " + input.name + ": " + difference);
         }
         for (const std::string& id : allowances) allowancesSeen[id].push_back(input.name);
+
+        const fs::path readOnlyMigrate = dir / "migrate-read-only";
+        fs::create_directories(readOnlyMigrate);
+        if (input.bytes) {
+            WriteBytes(readOnlyMigrate / "HeadTracking.ini", *input.bytes);
+            SetFileAttributesW((readOnlyMigrate / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_READONLY);
+        }
+        Check(Migrate(input, readOnlyMigrate, dir / "defaults" / "Defaults.ini", migratedFiles) == migration,
+              input.name + ": a read-only legacy file migrates as a writable one does");
+        if (input.bytes) SetFileAttributesW((readOnlyMigrate / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
+
+        // With no legacy file the settings are Defaults.ini's own, so only an
+        // input with a file is held to the import there.
+        if (input.bytes) {
+            const fs::path skewed = dir / "migrate-skewed";
+            WriteBytes(skewed / "HeadTracking.ini", *input.bytes);
+            WriteBytes(dir / "skewed" / "Defaults.ini", kSkewedDefaults);
+            Check(Migrate(input, skewed, dir / "skewed" / "Defaults.ini", migratedFiles) == migration,
+                  input.name + ": the migration gives the same settings over a Defaults.ini that differs everywhere");
+        }
     }
 
     std::printf("Comparison 1 (v0.1.0 against the frozen reader) over %zu inputs:\n", inputs.size());
@@ -690,18 +791,27 @@ int main(int argc, char** argv) {
         }
     }
 
-    // A player who installed the published build and changed nothing gets the
-    // committed file.
+    // A player who installed a published build and changed nothing gets the
+    // committed file, with Defaults.ini at the built-in values: every untouched
+    // global row migrates as default.
     const std::string committed = ReadBytes(fs::path(NMS_SOURCE_DIR) / "HeadTracking.ini");
-    Check(committed == RenderedDefaults(), "HeadTracking.ini is what the table renders");
+    Check(committed == RenderedDefaults(), "HeadTracking.ini, the committed CameraUnlock.ini, is the table's fresh render");
     for (const char* file : kDataFiles) {
         const fs::path dir = root / "upgrade" / fs::path(file).parent_path() / fs::path(file).stem();
-        fs::create_directories(dir);
         WriteBytes(dir / "HeadTracking.ini", ReadBytes(kData / file));
-        cfg::ConfigOwner<NMSHT::Config> owner(NMSHT::ConfigOwnerOptions((dir / "HeadTracking.ini").wstring()));
+        cfg::ConfigOwner<NMSHT::Config> owner(Options(dir, root / "upgrade-global" / "Defaults.ini"));
         Check(owner.Load().status == cfg::ConfigLoadStatus::Migrated, std::string(file) + " migrates");
-        Check(ReadBytes(dir / "HeadTracking.ini") == committed, std::string(file) + " migrates to the committed file");
+        Check(ReadBytes(dir / "CameraUnlock.ini") == committed, std::string(file) + " migrates to the committed file");
+        Check(ReadBytes(dir / "HeadTracking.ini") == ReadBytes(kData / file), std::string(file) + " is left as it was");
     }
+
+    // Core's canonical config lint runs over these next (lint-migrated.mjs).
+    const fs::path lintFolder = MigratedFolder();
+    fs::remove_all(lintFolder);
+    fs::create_directories(lintFolder);
+    std::size_t n = 0;
+    for (const std::string& file : migratedFiles) WriteBytes(lintFolder / (std::to_string(n++) + ".ini"), file);
+    std::printf("%zu distinct migrated files written to %s\n", migratedFiles.size(), lintFolder.string().c_str());
 
     fs::remove_all(root);
     if (g_failures != 0) {

@@ -30,9 +30,9 @@ public:
 
     const Config& GetConfig() const { return m_config; }
 
-    // HeadTracking.ini's settings when the file changed since the owner last
-    // read or wrote it, for the diagnostics that pick up edits mid-session.
-    // Nothing when it did not change or could not be read.
+    // CameraUnlock.ini's settings when it or Defaults.ini changed since the
+    // owner last read or wrote them, for the diagnostics that pick up edits
+    // mid-session. Nothing when neither changed or the file could not be read.
     std::optional<Config> ReloadChangedConfig();
 
     // Runs the shared pipeline for this frame (interpolation -> smooth ->

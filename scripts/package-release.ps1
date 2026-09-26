@@ -40,11 +40,6 @@ function New-ZipFromDirectory {
     }
 }
 
-# The committed manifest is the authoritative copy of the seeded ini, and the
-# blob inside the ZIP is a build product. Refreshing it here would ship a
-# correct ZIP over a stale committed file, so drift fails the build instead.
-Assert-ManifestSeedsMatchShipped -ManifestPath (Join-Path $projectRoot 'launcher-manifest.json') -ProjectRoot $projectRoot
-
 $manifest = Get-Content (Join-Path $projectRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json
 # mod_info.name is already the PascalCase AssemblyName used for the ZIP names.
 $modName  = $manifest.mod_info.name
@@ -52,10 +47,8 @@ $version  = $manifest.mod_info.version
 
 $buildOutput = Join-Path $projectRoot 'bin\Release'
 $modDll      = Join-Path $buildOutput 'XINPUT9_1_0.dll'
-$configFile  = Join-Path $projectRoot 'HeadTracking.ini'
 
-if (-not (Test-Path $modDll))     { throw "Missing build output: $modDll" }
-if (-not (Test-Path $configFile)) { throw "Missing config: $configFile" }
+if (-not (Test-Path $modDll)) { throw "Missing build output: $modDll" }
 
 $releaseDir = Join-Path $projectRoot 'release'
 if (Test-Path $releaseDir) { Remove-Item -Recurse -Force $releaseDir }
@@ -69,10 +62,11 @@ $instStaging = Join-Path $stagingRoot 'installer'
 New-Item -ItemType Directory -Path $instStaging | Out-Null
 
 # Plugins payload (install-body-shim.cmd copies from .\plugins\ to game exe dir).
+# No config: the mod creates CameraUnlock.ini at its first start and imports
+# HeadTracking.ini from an older version then, which a shipped file would stop.
 $pluginsDir = Join-Path $instStaging 'plugins'
 New-Item -ItemType Directory -Path $pluginsDir | Out-Null
-Copy-Item $modDll     -Destination (Join-Path $pluginsDir 'XINPUT9_1_0.dll')   -Force
-Copy-Item $configFile -Destination (Join-Path $pluginsDir 'HeadTracking.ini') -Force
+Copy-Item $modDll -Destination (Join-Path $pluginsDir 'XINPUT9_1_0.dll') -Force
 
 # install.cmd and uninstall.cmd are thin wrappers: the body they call lives in
 # shared/ at the ZIP root, and without it the installer aborts at its own layout
@@ -102,9 +96,10 @@ Write-Host "Created: $installerZip" -ForegroundColor Green
 # ---------------- Nexus ZIP ----------------
 $nexusStaging = Join-Path $stagingRoot 'nexus'
 New-Item -ItemType Directory -Path $nexusStaging | Out-Null
-# No HeadTracking.ini: a ZIP extracted over the game folder would put the
-# default file over the player's own, and the mod creates it at first launch.
-Copy-Item $modDll     -Destination (Join-Path $nexusStaging 'XINPUT9_1_0.dll')   -Force
+# No CameraUnlock.ini or HeadTracking.ini: a ZIP extracted over the game folder
+# would put the default file over the player's own, or over the file an older
+# version reads, and the mod creates CameraUnlock.ini at first launch.
+Copy-Item $modDll -Destination (Join-Path $nexusStaging 'XINPUT9_1_0.dll') -Force
 Copy-Item (Join-Path $projectRoot 'README.md') -Destination $nexusStaging -Force
 Copy-Item (Join-Path $projectRoot 'LICENSE')   -Destination $nexusStaging -Force
 

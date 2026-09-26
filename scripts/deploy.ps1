@@ -11,6 +11,9 @@
 # ordinary, and deploying to one while launching the other is a silent failure:
 # the build is correct, the fix does not appear, and the time goes into
 # re-debugging something that was never broken.
+#
+# No config is copied: the mod creates CameraUnlock.ini at its first start,
+# importing HeadTracking.ini where an older build left one.
 
 param(
     [Parameter(Mandatory=$true, Position=0)]
@@ -31,15 +34,11 @@ $projectRoot = Split-Path -Parent $scriptDir
 Import-Module (Join-Path $projectRoot 'cameraunlock-core\powershell\GamePathDetection.psm1') -Force
 
 $buildOutput = Join-Path $projectRoot "bin\$Configuration"
-$configFile  = Join-Path $projectRoot 'HeadTracking.ini'
 $modDllName  = 'XINPUT9_1_0.dll'
 
 $builtDll = Join-Path $buildOutput $modDllName
 if (-not (Test-Path $builtDll)) {
     throw "Build artifact not found at: $builtDll. Run 'pixi run build-release' first."
-}
-if (-not (Test-Path $configFile)) {
-    throw "Config file not found at: $configFile"
 }
 
 if ($GivenPath) {
@@ -76,23 +75,9 @@ foreach ($gamePath in $gamePaths) {
         continue
     }
 
-    # Write-if-absent, the same rule install.cmd applies through MOD_SEED_FILES.
-    # A -Force copy here blew away whatever was in the game folder on every
-    # deploy, including any smoothing or limits tuned to test the build going in.
-    $deployedConfig = Join-Path $exeDir 'HeadTracking.ini'
-    $seededConfig = -not (Test-Path $deployedConfig)
-    if ($seededConfig) {
-        Copy-Item -Path $configFile -Destination $deployedConfig
-    }
-
     Write-Host ""
     Write-Host "Deployed to: $exeDir" -ForegroundColor Green
     Write-Host "  XINPUT9_1_0.dll  (mod shim)"
-    if ($seededConfig) {
-        Write-Host "  HeadTracking.ini (config, seeded)"
-    } else {
-        Write-Host "  HeadTracking.ini (kept - your existing config was not overwritten)"
-    }
     $deployed++
 }
 
