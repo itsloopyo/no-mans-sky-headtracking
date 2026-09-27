@@ -178,10 +178,28 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     out.sceneSampleRva = read.sceneSampleRva ? std::vector<std::uint32_t>{*read.sceneSampleRva}
                                              : std::vector<std::uint32_t>{};
 
+    // A setting left at what the published build shipped is no player's choice,
+    // so its row follows Defaults.ini. The shipped file set every one of these
+    // to the frozen struct's default.
+    const legacy::Config shipped;
+    cfg::LegacyFollowsDefaultsIni untouched;
+    untouched.Setting(Concept::UdpPort, read.udpPort, shipped.udpPort);
+    untouched.Setting(Concept::EnableOnStartup, read.autoEnable, shipped.autoEnable);
+    untouched.TrackingMode(read.positionEnabled, shipped.positionEnabled);
+    untouched.Setting(Concept::LocalSmoothing, read.localSmoothing, shipped.localSmoothing);
+    untouched.Setting(Concept::RemoteSmoothing, read.remoteSmoothing, shipped.remoteSmoothing);
+    untouched.Setting(Concept::PositionLimitX, read.posLimitX, shipped.posLimitX);
+    untouched.Setting(Concept::PositionLimitY, read.posLimitY, shipped.posLimitY);
+    untouched.Setting(Concept::PositionLimitYDown, read.posLimitYDown, shipped.posLimitYDown);
+    untouched.Setting(Concept::PositionLimitZ, read.posLimitZ, shipped.posLimitZ);
+    untouched.Setting(Concept::PositionLimitZBack, read.posLimitZBack, shipped.posLimitZBack);
+    untouched.Setting(Concept::ToggleKey, read.toggleKey, shipped.toggleKey);
+    untouched.Setting(Concept::CycleTrackingModeKey, read.cycleModeKey, shipped.cycleModeKey);
+
     if (status == legacy::ReadStatus::Absent) {
-        return cfg::ImportResult::Absent(std::move(dropped), std::move(poseShaping));
+        return cfg::ImportResult::Absent(std::move(dropped), std::move(poseShaping), untouched.Concepts());
     }
-    return cfg::ImportResult::Imported(std::move(dropped), std::move(poseShaping));
+    return cfg::ImportResult::Imported(std::move(dropped), std::move(poseShaping), untouched.Concepts());
 }
 
 }  // namespace

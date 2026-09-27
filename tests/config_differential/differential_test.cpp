@@ -633,6 +633,59 @@ const char* const kSkewedDefaults =
     "PositionLimitYDown=0.5\r\nPositionLimitZ=0.5\r\nPositionLimitZBack=0.5\r\n\r\n"
     "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\n";
 
+// Each global row the table binds: the concept, the fields of ImportRecord the
+// frozen reader's value for it shows up in, and the fields of ConfigRecord the
+// row decides. The tracking mode is one unit, named by both halves.
+struct GlobalRow {
+    cfg::schema::Concept concept;
+    std::vector<std::string> legacyFields;
+    std::vector<std::string> migratedFields;
+};
+
+std::vector<GlobalRow> GlobalRows() {
+    using C = cfg::schema::Concept;
+    return {
+        {C::UdpPort, {"field.udpPort"}, {"field.udpPort"}},
+        {C::EnableOnStartup, {"field.autoEnable"}, {"startup.enabled"}},
+        {C::RotationEnabled, {"field.positionEnabled"}, {"startup.mode"}},
+        {C::PositionEnabled, {"field.positionEnabled"}, {"startup.mode"}},
+        {C::LocalSmoothing, {"field.localSmoothing"}, {"field.localSmoothing"}},
+        {C::RemoteSmoothing, {"field.remoteSmoothing"}, {"field.remoteSmoothing"}},
+        {C::PositionLimitX, {"field.posLimitX"}, {"field.posLimitX"}},
+        {C::PositionLimitY, {"field.posLimitY"}, {"field.posLimitY"}},
+        {C::PositionLimitYDown, {"field.posLimitYDown"}, {"field.posLimitYDown"}},
+        {C::PositionLimitZ, {"field.posLimitZ"}, {"field.posLimitZ"}},
+        {C::PositionLimitZBack, {"field.posLimitZBack"}, {"field.posLimitZBack"}},
+        {C::ToggleKey, {"field.toggleKey"}, {"hotkey.Toggle"}},
+        {C::CycleTrackingModeKey, {"field.cycleModeKey"}, {"hotkey.CycleTrackingMode"}},
+    };
+}
+
+// The rows a player never changed: those whose frozen-reader value is the one
+// the published build shipped, which is what it reads from no file at all. The
+// shipped files set every one of them to that value.
+std::set<cfg::schema::Concept> UntouchedRows(const Record& import, const Record& shipped) {
+    std::set<cfg::schema::Concept> rows;
+    for (const GlobalRow& row : GlobalRows()) {
+        bool same = true;
+        for (const std::string& field : row.legacyFields) same = same && import.at(field) == shipped.at(field);
+        if (same) rows.insert(row.concept);
+    }
+    return rows;
+}
+
+// The migration over a Defaults.ini other than the built-in one: the rows the
+// import left to Defaults.ini take that file's values (`global`, a first
+// launch over it), and every other row keeps what it migrated to over the
+// built-in Defaults.ini.
+Record OverDefaults(Record migration, const std::set<cfg::schema::Concept>& untouched, const Record& global) {
+    for (const GlobalRow& row : GlobalRows()) {
+        if (untouched.count(row.concept) == 0) continue;
+        for (const std::string& field : row.migratedFields) migration[field] = global.at(field);
+    }
+    return migration;
+}
+
 // Beside this executable, where the canonical config lint (lint-migrated.mjs)
 // reads the migrated files after this test.
 fs::path MigratedFolder() {
@@ -687,6 +740,26 @@ int main(int argc, char** argv) {
     Check(published.size() == inputs.size(), "the oracle read " + std::to_string(published.size()) + " of " +
                                                  std::to_string(inputs.size()) + " inputs");
 
+    // What the frozen reader gives with no file: the values the published
+    // build shipped. And a first launch over the skewed Defaults.ini, whose
+    // values the rows a player never changed take there.
+    const Record shippedImport = ImportRecord(root / "no-legacy" / "HeadTracking.ini");
+    const fs::path skewedDefaults = root / "skewed-global" / "Defaults.ini";
+    WriteBytes(skewedDefaults, kSkewedDefaults);
+    std::set<std::string> firstLaunchFiles;
+    fs::create_directories(root / "skewed-first-launch");
+    const Record skewedGlobal =
+        Migrate(Input{"no file", std::nullopt}, root / "skewed-first-launch", skewedDefaults, firstLaunchFiles);
+    for (const GlobalRow& row : GlobalRows()) {
+        for (const std::string& field : row.migratedFields) {
+            if (field == "startup.mode") continue;
+            Check(skewedGlobal.at(field) != shippedImport.at(field),
+                  "the skewed Defaults.ini differs from the shipped value on " + field);
+        }
+    }
+    Check(skewedGlobal.at("startup.mode") == "PositionOnly", "the skewed Defaults.ini names position only");
+
+    std::map<cfg::schema::Concept, std::size_t> changedRowsSeen;
     std::map<std::string, std::vector<std::string>> changesSeen;
     std::size_t migrated = 0;
     std::map<std::string, std::vector<std::string>> allowancesSeen;
@@ -717,11 +790,27 @@ int main(int argc, char** argv) {
         Check(Listing(readOnly) == before, input.name + ": the import writes nothing");
         if (input.bytes) SetFileAttributesW((readOnly / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
 
+        // A row follows Defaults.ini exactly where the player left it as the
+        // published build shipped it.
+        const std::set<cfg::schema::Concept> untouched = UntouchedRows(import, shippedImport);
+        const std::set<cfg::schema::Concept> listed(result.follows_defaults_ini.begin(),
+                                                    result.follows_defaults_ini.end());
+        Check(listed == untouched && listed.size() == result.follows_defaults_ini.size(),
+              input.name + ": the import leaves to Defaults.ini exactly the rows the player never changed");
+        if (std::find(std::begin(kDataFiles), std::end(kDataFiles), input.name) != std::end(kDataFiles) ||
+            input.name == "no file" || input.name == "empty file") {
+            Check(untouched.size() == GlobalRows().size(),
+                  input.name + ": every global row is untouched and follows Defaults.ini");
+        }
+        for (const GlobalRow& row : GlobalRows()) {
+            if (untouched.count(row.concept) == 0) ++changedRowsSeen[row.concept];
+        }
+
         // Comparison 2 and the migration's own checks. Each input migrates three
         // times: with Defaults.ini at the built-in values, from a read-only
         // legacy file, and with a Defaults.ini that differs on every global row.
-        // All three must give the same settings, since the migration writes a
-        // value wherever the imported one is not what default gives.
+        // The first two must give the same settings; the third differs on
+        // exactly the rows the player never changed.
         fs::create_directories(dir / "migrate");
         if (input.bytes) WriteBytes(dir / "migrate" / "HeadTracking.ini", *input.bytes);
         const Record migration = Migrate(input, dir / "migrate", dir / "defaults" / "Defaults.ini", migratedFiles);
@@ -742,14 +831,18 @@ int main(int argc, char** argv) {
               input.name + ": a read-only legacy file migrates as a writable one does");
         if (input.bytes) SetFileAttributesW((readOnlyMigrate / "HeadTracking.ini").c_str(), FILE_ATTRIBUTE_NORMAL);
 
-        // With no legacy file the settings are Defaults.ini's own, so only an
-        // input with a file is held to the import there.
-        if (input.bytes) {
+        // Over a Defaults.ini that differs on every global row, the rows the
+        // player never changed take its values and every changed row keeps the
+        // player's value.
+        {
             const fs::path skewed = dir / "migrate-skewed";
-            WriteBytes(skewed / "HeadTracking.ini", *input.bytes);
-            WriteBytes(dir / "skewed" / "Defaults.ini", kSkewedDefaults);
-            Check(Migrate(input, skewed, dir / "skewed" / "Defaults.ini", migratedFiles) == migration,
-                  input.name + ": the migration gives the same settings over a Defaults.ini that differs everywhere");
+            fs::create_directories(skewed);
+            if (input.bytes) WriteBytes(skewed / "HeadTracking.ini", *input.bytes);
+            const Record over = Migrate(input, skewed, skewedDefaults, migratedFiles);
+            const Record expected = OverDefaults(migration, untouched, skewedGlobal);
+            Check(over == expected, input.name + ": over a Defaults.ini that differs everywhere, only the rows the" +
+                                        " player changed keep the migrated value\n  got:" + Describe(over) +
+                                        "\n  expected:" + Describe(expected));
         }
     }
 
@@ -760,6 +853,11 @@ int main(int argc, char** argv) {
         std::printf("  %s\n    %zu inputs, e.g. %s\n", change.description, count,
                     count == 0 ? "none" : seen->second.front().c_str());
         Check(count > 0, std::string("no input shows the recorded change '") + change.id + "'");
+    }
+
+    for (const GlobalRow& row : GlobalRows()) {
+        Check(changedRowsSeen[row.concept] > 0, std::string("no input changes the row of ") +
+                                                    cfg::schema::kConcepts[static_cast<std::size_t>(row.concept)].name);
     }
 
     std::printf("Comparison 2 (the frozen reader against the migration): %zu inputs migrated\n", migrated);
