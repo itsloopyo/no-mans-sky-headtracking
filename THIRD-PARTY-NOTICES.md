@@ -13,7 +13,7 @@ README is covered in its own section below.
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
 | MinHook | `d94c64d32ea3` | BSD-2-Clause | Compiled into `XINPUT9_1_0.dll` |
-| cameraunlock-core | b4df73a5d8076968fcbf7e4088dd49db11a2684e | MIT | Compiled into `XINPUT9_1_0.dll` |
+| cameraunlock-core | 4a5e7f4d1c37efb9074f7f3651cde8327b64715a | MIT | Compiled into `XINPUT9_1_0.dll` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 
 ---
@@ -121,7 +121,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## cameraunlock-core
 
-- **Version:** `b4df73a5d8076968fcbf7e4088dd49db11a2684e`
+- **Version:** `4a5e7f4d1c37efb9074f7f3651cde8327b64715a`
 - **License:** MIT
 - **Upstream:** https://github.com/itsloopyo/cameraunlock-core
 - **Usage:** Supplies the shared tracking pipeline: OpenTrack receiver, pose
