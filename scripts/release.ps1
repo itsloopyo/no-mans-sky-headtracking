@@ -95,6 +95,13 @@ try {
 
 $tag = "v$Version"
 
+try {
+    Assert-ReleaseNotBelowCanonicalSince -RepoRoot $projectRoot -Version $Version
+} catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
 if ($branch -ne 'main') {
     Write-Host "Must be on main branch to release (currently on '$branch')" -ForegroundColor Red
