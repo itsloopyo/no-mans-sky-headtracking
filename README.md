@@ -6,14 +6,6 @@ An unofficial head tracking mod for No Man's Sky that moves the view with your
 head while your mouse or controller keeps aiming, driven by a webcam, phone, or
 any OpenTrack compatible tracker, with no VR headset required.
 
-> **Updating from 0.1.0?** Settings move to `Binaries\CameraUnlock.ini`. The
-> first time this version starts and finds no `CameraUnlock.ini`, it reads your
-> settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It
-> never changes `HeadTracking.ini`, so 0.1.0 still reads it if you go back. The
-> sensitivity, axis inversion and `[Reticle] FollowAim` settings are gone: set
-> sensitivity and inversion in your tracker, and the crosshair now always
-> follows your aim. See [Configuration](#configuration).
-
 ## Features
 
 - **Decoupled look and aim** - head tracking moves the view; aim stays on your mouse or controller
@@ -370,8 +362,8 @@ Download the new release and run `install.cmd` again. Your config is preserved.
 ## Uninstalling
 
 Run `uninstall.cmd`. This removes the mod DLL and its log files, and leaves
-`CameraUnlock.ini` and `HeadTracking.ini` in `Binaries` so your settings are
-there if you install again.
+`CameraUnlock.ini` in `Binaries` so your settings are there if you install
+again.
 The shim is the whole mod here, so there is no separate loader left behind, and
 the DLL and its logs come off whether or not the install marker is present.
 
