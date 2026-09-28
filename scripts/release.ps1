@@ -101,6 +101,18 @@ if (Test-GitTagExists -Tag $tag) {
     exit 1
 }
 
+Write-Host "Running the full test suite..." -ForegroundColor Cyan
+Push-Location $projectRoot
+try {
+    pixi run test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: pixi run test failed. Nothing was changed." -ForegroundColor Red
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
+
 # THIRD-PARTY-NOTICES.md names the cameraunlock-core commit compiled into the
 # release ZIPs, and bumping the submodule does not touch it. Packaging refuses
 # to ship that mismatch, so a bump with no notices edit stopped the release

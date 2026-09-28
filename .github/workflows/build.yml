@@ -14,6 +14,13 @@ on:
       - 'docs/**'
       - 'LICENSE'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build and package
@@ -42,7 +49,7 @@ jobs:
 
       # Build, test and package through the SAME command a developer runs
       # locally. All build logic lives in the pixi task chain (setup ->
-      # build-release -> test-release -> package); the workflow owns none, so
+      # build-release -> test-unit -> package); the workflow owns none, so
       # local and CI can't drift.
       - name: Build and package
         shell: pwsh

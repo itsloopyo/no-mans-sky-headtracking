@@ -19,11 +19,12 @@ setup = { cmd = """
 build         = { cmd = "cmake --build build --config Debug",   depends-on = ["setup"] }
 build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 
-test = { cmd = "ctest --test-dir build -C Debug --output-on-failure", depends-on = ["build"] }
-
-# The suite `package` runs first, Release rather than Debug so the runner is not
-# made to build the tree twice.
-test-release = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build-release"] }
+# Release rather than Debug, so the runner that packages is not made to build the
+# tree twice. test-debug is the same suite against the Debug build.
+test-unit = { cmd = "ctest --test-dir build -C Release --output-on-failure -LE differential", depends-on = ["build-release"] }
+test-differential = { cmd = "ctest --test-dir build -C Release --output-on-failure --no-tests=error -L differential", depends-on = ["build-release"] }
+test = { depends-on = ["test-unit", "test-differential"] }
+test-debug = { cmd = "ctest --test-dir build -C Debug --output-on-failure", depends-on = ["build"] }
 
 # Rewrite HeadTracking.ini, the committed copy of the CameraUnlock.ini the mod creates at
 # first launch, from the config table after a change to a row, a comment or a default;
@@ -46,9 +47,9 @@ uninstall-all = { cmd = "cmd /c scripts\\uninstall.cmd --force" }
 clean     = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }" """ }
 clean-all = { cmd = """powershell -Command "if (Test-Path 'build')   { Remove-Item 'build'   -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }" """ }
 
-# Packaging runs the Release suite first, the config differential test among it, so
+# Packaging runs the Release suite first, all but the config differential test, so
 # no ZIP is built from a tree whose tests fail.
-package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test-release"] }
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test-unit"] }
 release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
 
 # Shim-only mod: the DLL is itself the system-DLL proxy the game loads, so there

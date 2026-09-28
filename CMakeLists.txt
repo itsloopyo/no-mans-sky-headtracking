@@ -191,6 +191,7 @@ add_test(NAME nms_config_lint COMMAND node
          ${NMS_DIFFERENTIAL_DIR}/lint-migrated.mjs
          $<TARGET_FILE_DIR:nms_config_differential>/migrated)
 set_tests_properties(nms_config_lint PROPERTIES DEPENDS nms_config_differential)
+set_tests_properties(nms_config_differential nms_config_lint PROPERTIES LABELS differential)
 
 # What the differential test compiles is pinned by hash, line endings aside: the
 # oracle's files must stay v0.1.0's (git show v0.1.0:<path>, and core c480d8a's
