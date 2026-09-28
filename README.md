@@ -149,10 +149,11 @@ keyboard has. Both are set in `[Hotkeys]`, where you can change or remove
 either: in `CameraUnlock.ini` for this game, or in `Defaults.ini` while this
 game's rows say `default` (see [Configuration](#configuration)).
 
-| Action              | Nav-cluster | Chord           |
-|---------------------|-------------|-----------------|
-| Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
-| Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
+| Action                | Nav-cluster | Chord           |
+|-----------------------|-------------|-----------------|
+| Toggle tracking       | `End`       | `Ctrl+Shift+Y`  |
+| Cycle tracking mode   | `Page Up`   | `Ctrl+Shift+G`  |
+| Toggle true free look | `Insert`    | `Ctrl+Shift+U`  |
 
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
@@ -169,7 +170,18 @@ it is on at startup is `[General] EnableOnStartup`.
 
 Head tracking stays on while you aim. The weapon stays where your mouse or
 controller points it, so with your head turned it sits off to one side with its
-sights still lined up, and your rounds land where those sights point.
+sights still lined up, and your rounds land where those sights point. Head
+movement is scaled to the zoom, so aiming does not magnify it.
+
+By default the multitool is drawn from your leaned eye, so leaning never takes
+your eye off the sights. `Insert` / `Ctrl+Shift+U` switches to **true free
+look**: the multitool is drawn from where your eye is without the lean, so it
+stays put and your head moves freely around it, and to see down the sights you
+have to put your head behind them, as you would in VR. It is hard, and it is off
+by default. Switching slides the multitool between the two rather than jumping.
+The mod does not read whether you are aiming, so the mode you pick holds whether
+or not the sights are up. The mod saves it, so it holds the next time you start
+the game too.
 
 ## Configuration
 
@@ -190,6 +202,7 @@ The built-in value of each setting set to `default` below:
 - `LocalSmoothing=0.0`
 - `RemoteSmoothing=0.15`
 - `PositionEnabled=true`
+- `TrueFreeLook=false`
 - `PositionLimitX=0.3`
 - `PositionLimitY=0.2`
 - `PositionLimitYDown=0.2`
@@ -197,6 +210,7 @@ The built-in value of each setting set to `default` below:
 - `PositionLimitZBack=0.1`
 - `ToggleKey=End, Ctrl+Shift+Y`
 - `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `TrueFreeLookKey=Insert, Ctrl+Shift+U`
 
 With every setting at its default, the file reads:
 
@@ -237,6 +251,9 @@ RemoteSmoothing=default
 ; true: moving your head moves the view.
 ; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
 PositionEnabled=default
+; false: while you aim down the sights, leaning keeps your eye on the sights.
+; true: the weapon stays put and your head moves freely around it (true free look).
+TrueFreeLook=default
 ; How far, in metres, leaning left or right can move the view.
 PositionLimitX=default
 ; How far, in metres, raising your head can move the view.
@@ -253,6 +270,8 @@ PositionLimitZBack=default
 ToggleKey=default
 ; Changes the tracking mode: rotation and position, rotation only, position only.
 CycleTrackingModeKey=default
+; Switches between keeping your eye on the sights and true free look (TrueFreeLook).
+TrueFreeLookKey=default
 
 [Logging]
 ; true: write HeadTracking.log beside NMS.exe. It starts fresh every launch.
@@ -338,6 +357,9 @@ ReticleSweep=false
 - **The weapon is off to one side when I aim down sights.** Your head is
   turned: the weapon stays on your aim and you are looking past it. Turn back to
   it, or move your aim to where you are looking.
+- **I can't see down the sights, they are misaligned.** You are in true free
+  look and your head is leaned off them. Move your head back behind them, or
+  press `Insert` / `Ctrl+Shift+U` to return to sights locked.
 - **Filing a bug report.** Set `[Debug] Diagnostics=true` in `CameraUnlock.ini`,
   relaunch, reproduce, and attach `HeadTracking.log`.
 

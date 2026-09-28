@@ -26,6 +26,7 @@
 #include <intrin.h>
 #include <thread>
 
+#include <cameraunlock/ads/ads_fade.h>
 #include <cameraunlock/hooks/hook_manager.h>
 #include <cameraunlock/memory/pe_fingerprint.h>
 #include <cameraunlock/memory/rtti_vtable.h>
@@ -396,12 +397,13 @@ bool g_sceneSampling = false;
 std::atomic<uint64_t> g_sceneUnmatched{0};
 std::atomic<uint64_t> g_sceneStale{0};
 
-void PublishPair(const float* clean, const float* applied, uint64_t commit) {
+void PublishPair(const float* clean, const float* applied, float weaponEyeLean, uint64_t commit) {
     const unsigned long i =
         static_cast<unsigned long>(InterlockedIncrement(&g_pairClaim)) % kPairSlots;
     CameraPair& dst = g_pairSlots[i];
     CopyTransform(dst.clean, clean);
     CopyTransform(dst.applied, applied);
+    dst.weaponEyeLean = weaponEyeLean;
     dst.commit = commit;
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
@@ -461,11 +463,13 @@ void NoteCommitThread() {
 // interpolation and smoothing state, and it is documented as once per render
 // frame. The copy accessor does not run on the commit thread, so calling it
 // there raced the real camera path over that state and stole its dt.
-struct AppliedPose {
-    float yaw, pitch, roll;
-    float x, y, z;
-};
 AppliedPose g_lastPose{};
+
+// How much of the lean the multitool's eye carries: 1 in sights locked, 0 in
+// true free look. Fed the mode as its aim state, AdsFade rests at the leaned eye
+// in sights locked, and the toggle slides the multitool between the two eyes
+// instead of stepping it by the whole lean. Commit thread only.
+cameraunlock::ads::AdsFade g_weaponEyeFade;
 // The frame-phase counters are the answer to "is the pipeline reaching the
 // renderer", so they have to keep appearing for the whole session: a single
 // report at startup cannot date the moment tracking stopped. The rate is the
@@ -796,6 +800,38 @@ bool AcquirePose(AppliedPose& pose, bool& havePosition) {
     return true;
 }
 
+// The zoom factor for this commit, read off the live camera. Every term goes to
+// the log on the first commit and again whenever the factor moves, rate limited
+// but never capped, because a factor wrong by a constant reads exactly like a
+// right one: the line has to read 1.0000 in ordinary play. An unreadable FOV
+// compensates nothing and says so once.
+float LiveZoomFactor() {
+    static bool saidUnreadable = false;
+    static float logged = -1.0f;
+    static ULONGLONG loggedAt = 0;
+    float field = 0.0f, scale = 0.0f;
+    if (!LiveCameraFovTerms(field, scale) || !std::isfinite(field) || !std::isfinite(scale) ||
+        !(field > 0.0f && field < 180.0f) || !(scale > 0.0f && scale * field < 360.0f)) {
+        if (!saidUnreadable) {
+            saidUnreadable = true;
+            HT_LOG("Zoom: the field of view is unreadable on this build (field %.3f, scale %.4f), so head "
+                   "tracking is not compensated for zoom.", field, scale);
+        }
+        return 1.0f;
+    }
+    const float factor = ZoomFactor(field, scale);
+    const ULONGLONG now = GetTickCount64();
+    if (std::fabs(factor - logged) > 0.0005f && now - loggedAt >= 200) {
+        logged = factor;
+        loggedAt = now;
+        HT_LOG("Zoom: field %.3f x scale %.4f = %.2f deg vertical; un-zoomed field %.1f x scale %.4f = "
+               "%.2f deg vertical; factor %.4f.",
+               field, scale, 0.5f * scale * field, kUnzoomedCameraField, scale,
+               0.5f * scale * kUnzoomedCameraField, factor);
+    }
+    return factor;
+}
+
 // [Debug] CleanGlobalCycle: holds the engine camera global at the clean basis
 // while the live transform stays rotated.
 void MirrorCleanToCycledGlobal(const float* clean) {
@@ -907,6 +943,7 @@ void OnRenderPhaseBegin(void* committedCamera) {
     // with a staler one. The engine's own commit is the restore.
     CaptureClean(live, render);
     const float* const clean = g_cleanPub.load(std::memory_order_acquire);
+    const float zoom = LiveZoomFactor();
 
     // Outside gameplay the camera belongs to the engine. The frontend, every
     // loading screen, the galaxy map, the death screen and any in-game menu page
@@ -928,6 +965,9 @@ void OnRenderPhaseBegin(void* committedCamera) {
         StandDown();
         return;
     }
+    // Before anything else reads the pose, so the camera, the weapon, the
+    // reticle and the log all describe the view the player is looking through.
+    ScalePoseForZoom(zoom, pose);
     g_lastPose = { pose.yaw, pose.pitch, pose.roll,
                    havePosition ? pose.x : 0.0f,
                    havePosition ? pose.y : 0.0f,
@@ -960,7 +1000,7 @@ void OnRenderPhaseBegin(void* committedCamera) {
 
     g_appliedDiffers.store(!WrittenRowsEqual(rows, clean), std::memory_order_release);
     PublishApplied(rows);
-    PublishPair(clean, rows, n);
+    PublishPair(clean, rows, g_weaponEyeFade.Update(Mod::Instance().IsTrueFreeLook(), GetTickCount64()), n);
     g_applyCount.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -1061,10 +1101,7 @@ float* WeaponCameraForTransform(float* transform) {
     const CameraPair* const pair = g_pairPub.load(std::memory_order_acquire);
     if (transform != g_liveTransform || pair == nullptr) return transform;
     float rows[kTransformFloats];
-    CopyTransform(rows, pair->clean);
-    rows[12] = pair->applied[12];
-    rows[13] = pair->applied[13];
-    rows[14] = pair->applied[14];
+    WeaponCameraRows(pair->clean, pair->applied, pair->weaponEyeLean, rows);
     float* const dst = t_cleanObjects[t_cleanObjectTurn++ % kCleanObjectSlots];
     if (g_renderRowsFloats == 0) {
         CopyTransform(dst, rows);

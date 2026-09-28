@@ -38,10 +38,17 @@ struct Config {
     float posLimitZ     = cameraunlock::PositionSettings{}.limit_z;
     float posLimitZBack = cameraunlock::PositionSettings{}.limit_z_back;
 
+    // false: the multitool is placed at the leaned eye, so a lean never takes
+    // it off the eye. true: it stays at the un-leaned eye and the leaned head
+    // moves around it. Its key saves it.
+    bool trueFreeLook = false;
+
     std::string toggleKey = cameraunlock::config::schema::ConceptTraits<
         cameraunlock::config::schema::Concept::ToggleKey>::kCanonicalDefault;
     std::string cycleTrackingModeKey = cameraunlock::config::schema::ConceptTraits<
         cameraunlock::config::schema::Concept::CycleTrackingModeKey>::kCanonicalDefault;
+    std::string trueFreeLookKey = cameraunlock::config::schema::ConceptTraits<
+        cameraunlock::config::schema::Concept::TrueFreeLookKey>::kCanonicalDefault;
 
     bool writeLog = true;
 

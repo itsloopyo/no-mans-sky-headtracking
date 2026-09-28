@@ -32,8 +32,11 @@ cfg::ConfigTable<Config> ConfigTable() {
         .Concept<Concept::PositionLimitYDown>(&Config::posLimitYDown)
         .Concept<Concept::PositionLimitZ>(&Config::posLimitZ)
         .Concept<Concept::PositionLimitZBack>(&Config::posLimitZBack)
+        .Concept<Concept::TrueFreeLook>(&Config::trueFreeLook)
+        .Writable()
         .Concept<Concept::ToggleKey>(&Config::toggleKey)
         .Concept<Concept::CycleTrackingModeKey>(&Config::cycleTrackingModeKey)
+        .Concept<Concept::TrueFreeLookKey>(&Config::trueFreeLookKey)
         .Local("Logging", "WriteLog", &Config::writeLog, cfg::BoolCodec(),
                "true: write HeadTracking.log beside NMS.exe. It starts fresh every launch.")
         .Local("Debug", "Diagnostics", &Config::diagnostics, cfg::BoolCodec(),
@@ -195,6 +198,10 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     untouched.Setting(Concept::PositionLimitZBack, read.posLimitZBack, shipped.posLimitZBack);
     untouched.Setting(Concept::ToggleKey, read.toggleKey, shipped.toggleKey);
     untouched.Setting(Concept::CycleTrackingModeKey, read.cycleModeKey, shipped.cycleModeKey);
+    // v0.1.0's [ADS] Mode was the retired aim cycle, not free look, so nothing
+    // carries over into either row.
+    untouched.NotInLegacy(Concept::TrueFreeLook);
+    untouched.NotInLegacy(Concept::TrueFreeLookKey);
 
     if (status == legacy::ReadStatus::Absent) {
         return cfg::ImportResult::Absent(std::move(dropped), std::move(poseShaping), untouched.Concepts());

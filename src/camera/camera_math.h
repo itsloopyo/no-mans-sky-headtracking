@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include <cameraunlock/camera/zoom_compensation.h>
+
 namespace NMSHT {
 
 // The engine's camera transform: five rows of four floats.
@@ -147,6 +149,49 @@ inline void ComposeTrackedRows(const float* clean,
     rows[12] += clean[0] * ex + clean[4] * y + clean[8]  * ez;
     rows[13] += clean[1] * ex + clean[5] * y + clean[9]  * ez;
     rows[14] += clean[2] * ex + clean[6] * y + clean[10] * ez;
+}
+
+// The camera's own field of view when nothing is zoomed. The player's Options >
+// Camera setting never reaches this field: it arrives as a global scale of
+// setting / 75, measured in world at 75 and 100 degrees (.lab/NOTES.md). So 75
+// times the live scale is the un-zoomed view as the player set it.
+constexpr float kUnzoomedCameraField = 75.0f;
+
+// The factor head tracking scales by at the live zoom. The engine builds its
+// projection from tan(scale * field / 4) as the vertical half-angle, so both
+// tangents are vertical and the ratio is exactly 1 whenever the field is at
+// kUnzoomedCameraField.
+inline float ZoomFactor(float field, float scale) {
+    return cameraunlock::camera::FovZoomFactor(std::tan(0.25f * scale * field * kDegToRad),
+                                               std::tan(0.25f * scale * kUnzoomedCameraField * kDegToRad));
+}
+
+struct AppliedPose {
+    float yaw, pitch, roll;
+    float x, y, z;
+};
+
+// Yaw, pitch and the lean scale with the zoom; roll rotates the picture by the
+// same angle at every field of view, so it does not.
+inline void ScalePoseForZoom(float factor, AppliedPose& pose) {
+    pose.yaw = cameraunlock::camera::ScaleAngleForZoom(pose.yaw, factor);
+    pose.pitch = cameraunlock::camera::ScaleAngleForZoom(pose.pitch, factor);
+    pose.x *= factor;
+    pose.y *= factor;
+    pose.z *= factor;
+}
+
+// The camera the multitool is placed from, into `rows`. Always the clean basis,
+// so the tool points along the aim whatever the head does. The multitool hangs
+// about half a metre in front of the eye, so the eye it is placed from decides
+// what a lean does to it: the tracked eye (sights locked, `leanedEye` 1) carries
+// it with the lean and keeps it in its place in the frame; the clean eye (true
+// free look, `leanedEye` 0) leaves it in the world and lets the leaned head move
+// around it. In between, while the toggle's transition runs, it sits that share
+// of the way from the clean eye to the tracked one.
+inline void WeaponCameraRows(const float* clean, const float* applied, float leanedEye, float* rows) {
+    CopyTransform(rows, clean);
+    for (int i = 12; i < 15; ++i) rows[i] = clean[i] + (applied[i] - clean[i]) * leanedEye;
 }
 
 }  // namespace NMSHT

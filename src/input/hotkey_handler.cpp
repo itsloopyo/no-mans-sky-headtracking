@@ -15,15 +15,18 @@ void HotkeyHandler::Start(const Config& config) {
                                              []() { Mod::Instance().Toggle(); });
     cameraunlock::input::RegisterKeyBindings(m_poller, KeyBindings(config.cycleTrackingModeKey),
                                              []() { Mod::Instance().CycleTrackingMode(); });
+    cameraunlock::input::RegisterKeyBindings(m_poller, KeyBindings(config.trueFreeLookKey),
+                                             []() { Mod::Instance().ToggleTrueFreeLook(); });
     if (config.aimCallerSweep || config.cullCallerSweep) {
         cameraunlock::input::RegisterKeyBindings(m_poller, KeyBindings(config.sweepFreezeKey),
                                                  []() { RequestSweepFreeze(); });
     }
 
     if (!m_poller.Start(16)) {
-        HT_LOG("ERROR: the hotkey thread did not start - ToggleKey (%s) and "
-               "CycleTrackingModeKey (%s) will do nothing this session.",
-               config.toggleKey.c_str(), config.cycleTrackingModeKey.c_str());
+        HT_LOG("ERROR: the hotkey thread did not start - ToggleKey (%s), "
+               "CycleTrackingModeKey (%s) and TrueFreeLookKey (%s) will do nothing this session.",
+               config.toggleKey.c_str(), config.cycleTrackingModeKey.c_str(),
+               config.trueFreeLookKey.c_str());
     }
 }
 

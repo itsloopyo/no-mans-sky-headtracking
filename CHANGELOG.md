@@ -4,7 +4,8 @@
 
 ### Changed
 
-- Head tracking stays on while you aim down sights (e5fb487). The three ADS modes are gone, and with them their key (Insert / Ctrl+Shift+U). `[ADS] Mode` and `[Hotkeys] AdsModeKey` are no longer read.
+- Head tracking stays on while you aim down sights (e5fb487). The three ADS modes are gone. Insert / Ctrl+Shift+U now toggle true free look (see Added). `[ADS] Mode` and `[Hotkeys] AdsModeKey` are no longer read, and `[ADS] Mode` is not taken as true free look.
+- Head movement is scaled to the game's zoom, so a narrower field of view does not magnify it. Roll is not scaled.
 - Settings move to `Binaries\CameraUnlock.ini`. Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
 - A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default earlier versions used, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
 - `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
@@ -21,6 +22,7 @@
 
 ### Added
 
+- True free look, off by default, toggled with Insert / Ctrl+Shift+U (`[Hotkeys] TrueFreeLookKey`) and saved to `[Position] TrueFreeLook` in `CameraUnlock.ini` each time you press it. By default the multitool is drawn from your leaned eye, so a lean never takes it off your eye. With true free look on it is drawn from your eye without the lean, so it stays put in the world and your head moves freely around it. Switching slides the multitool between the two rather than jumping. The mod does not read whether you are aiming, so the mode holds whether or not the sights are up.
 - A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
 - `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
 - When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.

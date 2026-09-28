@@ -97,6 +97,8 @@ const float* AppliedCameraRows();
 struct CameraPair {
     float clean[20];
     float applied[20];
+    // The share of the lean the multitool's eye carries (WeaponCameraRows).
+    float weaponEyeLean;
     uint64_t commit;
     int64_t qpc;
 };

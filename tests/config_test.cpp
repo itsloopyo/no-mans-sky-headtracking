@@ -129,6 +129,11 @@ void DefaultsAreTheFleetDefaults() {
     Check(freeze.size() == 1 && freeze[0].vk == 'J' &&
               freeze[0].modifiers == (KeyModifiers::kCtrl | KeyModifiers::kShift),
           "SweepFreezeKey registers Ctrl+Shift+J");
+    Check(!defaults.trueFreeLook, "TrueFreeLook defaults to false: sights locked");
+    const auto freeLook = NMSHT::KeyBindings(defaults.trueFreeLookKey);
+    Check(freeLook.size() == 2 && freeLook[0].vk == VK_INSERT && freeLook[0].modifiers == KeyModifiers::kNone &&
+              freeLook[1].vk == 'U' && freeLook[1].modifiers == (KeyModifiers::kCtrl | KeyModifiers::kShift),
+          "TrueFreeLookKey registers Insert and Ctrl+Shift+U");
     Check(defaults.aimTransformCallers.empty() && defaults.aimCopyCallers.empty() &&
               defaults.trackedTransformCallers.empty() && defaults.sceneSampleRva.empty(),
           "the [Debug] address lists default to the build's own");
@@ -192,6 +197,59 @@ void TheModeCycleSavesOnlyItsRows(const fs::path& dir) {
     Check(again.config.enableOnStartup, "EnableOnStartup stays as the file had it");
 }
 
+// The free-look key's save changes the TrueFreeLook line and no other byte, and
+// the next launch comes back in the mode last chosen.
+void TheFreeLookToggleSavesOnlyItsRow(const fs::path& dir) {
+    const fs::path folder = dir / "freelook";
+    fs::create_directories(folder);
+    const fs::path defaults = dir / "freelook-global" / "Defaults.ini";
+    const fs::path path = folder / "CameraUnlock.ini";
+    cfg::ConfigOwner<Config> owner(Options(folder, defaults));
+    Check(owner.Load().status == cfg::ConfigLoadStatus::Created, "a first launch creates the file");
+    const std::string fresh = ReadBytes(path);
+
+    Check(owner.Save([](Config& c) { c.trueFreeLook = true; }).status == cfg::ConfigSaveStatus::Saved,
+          "true free look saves");
+    const std::string on = ReadBytes(path);
+    const auto first = ChangedLines(fresh, on);
+    Check(first.size() == 1 && first[0] == "TrueFreeLook=default -> TrueFreeLook=true",
+          "turning true free look on changes only its own line");
+    Check(cfg::ConfigOwner<Config>(Options(folder, defaults)).Load().config.trueFreeLook,
+          "a restart comes back in true free look");
+
+    Check(owner.Save([](Config& c) { c.trueFreeLook = false; }).status == cfg::ConfigSaveStatus::Saved,
+          "sights locked saves");
+    const auto second = ChangedLines(on, ReadBytes(path));
+    Check(second.size() == 1 && second[0] == "TrueFreeLook=true -> TrueFreeLook=false",
+          "turning it off changes only its own line");
+    Check(!cfg::ConfigOwner<Config>(Options(folder, defaults)).Load().config.trueFreeLook,
+          "a restart comes back in sights locked");
+}
+
+// The retired ADS cycle's keys, in a legacy file or in CameraUnlock.ini, load
+// without an error and never turn free look on: `tracked` was not free look.
+void TheRetiredAdsModeIsIgnored(const fs::path& dir) {
+    const fs::path legacyFolder = dir / "ads-legacy";
+    fs::create_directories(legacyFolder);
+    WriteBytes(legacyFolder / "HeadTracking.ini", "[ADS]\r\nMode=tracked\r\n[Hotkeys]\r\nAdsModeKey=0x2D\r\n");
+    const auto imported = cfg::ConfigOwner<Config>(Options(legacyFolder, dir / "ads-global" / "Defaults.ini")).Load();
+    Check(imported.status == cfg::ConfigLoadStatus::Migrated,
+          std::string("a legacy file carrying [ADS] Mode migrates, not ") + cfg::ConfigLoadStatusName(imported.status) +
+              ": " + imported.reason);
+    Check(!imported.config.trueFreeLook, "a legacy [ADS] Mode=tracked leaves true free look off");
+    Check(imported.config.trueFreeLookKey == "Insert, Ctrl+Shift+U", "and the free-look key at its default");
+
+    const fs::path canonicalFolder = dir / "ads-canonical";
+    fs::create_directories(canonicalFolder);
+    WriteBytes(canonicalFolder / "CameraUnlock.ini", Rendered() + "\r\n[ADS]\r\nads_mode=tracked\r\n");
+    const auto loaded =
+        cfg::ConfigOwner<Config>(Options(canonicalFolder, dir / "ads-global" / "Defaults.ini")).Load();
+    Check(loaded.status == cfg::ConfigLoadStatus::Canonical,
+          std::string("CameraUnlock.ini carrying ads_mode still loads as canonical, not ") +
+              cfg::ConfigLoadStatusName(loaded.status) + ": " + loaded.reason);
+    Check(!loaded.config.trueFreeLook, "an ads_mode line leaves true free look off");
+}
+
 void AnEditIsPickedUpMidSession(const fs::path& dir) {
     const fs::path folder = dir / "edited";
     fs::create_directories(folder);
@@ -252,6 +310,8 @@ int main(int argc, char** argv) {
     RenderMatchesCommittedFile();
     DefaultsAreTheFleetDefaults();
     TheModeCycleSavesOnlyItsRows(dir);
+    TheFreeLookToggleSavesOnlyItsRow(dir);
+    TheRetiredAdsModeIsIgnored(dir);
     AnEditIsPickedUpMidSession(dir);
     DefaultRowsFollowDefaultsIni(dir);
     fs::remove_all(dir);

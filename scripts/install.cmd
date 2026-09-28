@@ -31,7 +31,7 @@ set "SHIM_MARKER=NoMansSkyHeadTracking"
 :: older version then, which a seeded CameraUnlock.ini would stop.
 set "MOD_SEED_FILES="
 :: Post-install help text. `&echo ` starts each further line.
-set "MOD_CONTROLS=Controls:&echo   End     / Ctrl+Shift+Y  - Toggle head tracking on/off&echo   Page Up / Ctrl+Shift+G  - Cycle tracking mode (both / rotation only / position only)"
+set "MOD_CONTROLS=Controls:&echo   End     / Ctrl+Shift+Y  - Toggle head tracking on/off&echo   Page Up / Ctrl+Shift+G  - Cycle tracking mode (both / rotation only / position only)&echo   Insert  / Ctrl+Shift+U  - Toggle true free look (sights locked / true free look)"
 :: Not used by this mod. Set blank so a value another mod's wrapper left in
 :: the same console does not reach the body.
 set "SHIM_MARKER_ALT="

@@ -28,6 +28,10 @@ public:
     // position only -> back. Saves the new mode as the startup mode.
     void CycleTrackingMode();
 
+    // Sights locked <-> true free look. Saves the new mode.
+    void ToggleTrueFreeLook();
+    bool IsTrueFreeLook() const { return m_trueFreeLook.load(std::memory_order_acquire); }
+
     const Config& GetConfig() const { return m_config; }
 
     // CameraUnlock.ini's settings when it or Defaults.ini changed since the
@@ -62,6 +66,7 @@ private:
 
     std::atomic<bool> m_enabled{false};
     std::atomic<bool> m_receiving{false};
+    std::atomic<bool> m_trueFreeLook{false};
 
     Config m_config;
     std::optional<cameraunlock::config::ConfigOwner<Config>> m_configOwner;

@@ -69,6 +69,8 @@ bool Mod::Initialize(HMODULE hModule) {
     HT_LOG("Smoothing: local=%.2f remote=%.2f",
            m_config.localSmoothing, m_config.remoteSmoothing);
     m_session.SetMode(StartupTrackingMode(m_config));
+    m_trueFreeLook.store(m_config.trueFreeLook, std::memory_order_release);
+    HT_LOG("Aim: %s.", m_config.trueFreeLook ? "true free look" : "sights locked");
 
     // UDP receiver.
     m_receiver.SetLog([](const std::string& msg) {
@@ -127,6 +129,17 @@ void Mod::CycleTrackingMode() {
         c.rotationEnabled = channels.rotation_enabled;
         c.positionEnabled = channels.position_enabled;
     });
+    LogLines(saved.log);
+    if (!saved.reason.empty()) HT_LOG("%s", saved.reason.c_str());
+}
+
+void Mod::ToggleTrueFreeLook() {
+    const bool on = !m_trueFreeLook.load(std::memory_order_acquire);
+    m_trueFreeLook.store(on, std::memory_order_release);
+    // The mod has no overlay, so the toast is this line.
+    HT_LOG("%s", on ? "True free look: ON" : "True free look: OFF (sights locked)");
+
+    const auto saved = m_configOwner->Save([on](Config& c) { c.trueFreeLook = on; });
     LogLines(saved.log);
     if (!saved.reason.empty()) HT_LOG("%s", saved.reason.c_str());
 }

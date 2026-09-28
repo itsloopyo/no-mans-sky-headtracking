@@ -45,22 +45,6 @@ $changelogPath = Join-Path $projectRoot 'CHANGELOG.md'
 
 Import-Module (Join-Path $projectRoot 'cameraunlock-core\powershell\ReleaseWorkflow.psm1') -Force
 
-# Mirrors New-ChangelogFromCommits' insertion so a -Force maintenance entry
-# lands in the same place with the same shape.
-function Add-MaintenanceChangelogEntry {
-    param([string]$Path, [string]$NewVersion)
-    $date = Get-Date -Format 'yyyy-MM-dd'
-    $entry = "## [$NewVersion] - $date`n`n### Changed`n`n- Maintenance release (no user-facing changes).`n`n"
-    $changelog = Get-Content $Path -Raw
-    if ($changelog -match '(?s)(# Changelog.*?)(## \[)') {
-        $changelog = $changelog -replace '(?s)(# Changelog.*?\n\n)', "`$1$entry"
-    } else {
-        $changelog = $changelog -replace '(?s)(# Changelog.*?\n)', "`$1$entry"
-    }
-    $changelog = $changelog.TrimEnd() + "`n"
-    Set-Content $Path $changelog -NoNewline
-}
-
 function Get-ManifestVersion {
     $json = Get-Content $manifestPath -Raw
     if ($json -match '(?m)^\s*"version":\s*"([^"]+)"') {
@@ -141,50 +125,18 @@ Write-Host ''
 # any version files so an abort here leaves the working tree clean instead
 # of stranding a half-applied version bump with no tag.
 Write-Host 'Generating CHANGELOG from commits...' -ForegroundColor Cyan
-$hasTags = git tag -l 2>$null
-if (-not $hasTags) {
-    # PREPEND, never Set-Content. With no tags yet there is nothing to diff
-    # against, but CHANGELOG.md is hand-written from the first commit onward and
-    # overwriting it threw all of that away on the first versioned release - the
-    # one release where it matters most, and silently, because nothing failed.
-    $date = Get-Date -Format 'yyyy-MM-dd'
-    $entry = "## [$Version] - $date`n`nFirst release.`n"
-    if (Test-Path $changelogPath) {
-        $existing = [System.IO.File]::ReadAllText($changelogPath)
-        if ($existing -match [regex]::Escape("## [$Version]")) {
-            Write-Host "CHANGELOG already carries a [$Version] section - left as written." -ForegroundColor Yellow
-        } elseif ($existing -match '(?m)^# Changelog\r?\n') {
-            # Instance Replace, not the static one. There is no static
-            # Regex.Replace(String, String, String, Int32) overload: a trailing 1
-            # binds to RegexOptions (= IgnoreCase) and the replace runs GLOBALLY,
-            # so a second "# Changelog" anywhere in the file - a fenced example,
-            # a quoted heading - would get its own copy of the release section.
-            $headingRe = [regex]::new('(?m)^(# Changelog\r?\n\r?\n?)')
-            $existing = $headingRe.Replace($existing, "`$1$entry`n", 1)
-            [System.IO.File]::WriteAllText($changelogPath, $existing)
-        } else {
-            [System.IO.File]::WriteAllText($changelogPath, "# Changelog`n`n$entry`n$existing")
-        }
-    } else {
-        Set-Content $changelogPath "# Changelog`n`n$entry"
+try {
+    $changelogArgs = @{
+        ChangelogPath = $changelogPath
+        Version       = $Version
+        ArtifactPaths = @('src/', 'cameraunlock-core', 'scripts/')
+        Maintenance   = $Force
     }
-} else {
-    try {
-        $changelogArgs = @{
-            ChangelogPath = $changelogPath
-            Version       = $Version
-            ArtifactPaths = @('src/', 'cameraunlock-core', 'scripts/')
-        }
-        New-ChangelogFromCommits @changelogArgs | Out-Null
-    } catch {
-        if (-not $Force) {
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host 'No user-facing changes to release. Re-run with -Force for a maintenance release.' -ForegroundColor Yellow
-            exit 1
-        }
-        Write-Host 'No user-facing commits since last tag - writing maintenance entry (-Force).' -ForegroundColor Yellow
-        Add-MaintenanceChangelogEntry -Path $changelogPath -NewVersion $Version
-    }
+    New-ChangelogFromCommits @changelogArgs | Out-Null
+} catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host 'No user-facing changes to release. Re-run with -Force for a maintenance release.' -ForegroundColor Yellow
+    exit 1
 }
 
 # Step 2 - bump version in launcher-manifest.json. mod_info.version is the

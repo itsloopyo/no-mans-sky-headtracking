@@ -19,6 +19,12 @@ using NMSHT::ComposeTrackedRows;
 using NMSHT::CopyTransform;
 using NMSHT::kTransformFloats;
 using NMSHT::PreMultiplyRotation;
+using NMSHT::AppliedPose;
+using NMSHT::WeaponCameraRows;
+using NMSHT::kDegToRad;
+using NMSHT::kUnzoomedCameraField;
+using NMSHT::ScalePoseForZoom;
+using NMSHT::ZoomFactor;
 using NMSHT::WriteBasisAndPosition;
 
 namespace {
@@ -417,6 +423,68 @@ void GravityYawPreservesElevationAtThePoles() {
     }
 }
 
+// Sights locked places the multitool at the leaned eye, true free look at the
+// clean one, and both with the clean basis for the same pose.
+void TheWeaponEyeFollowsTheMode() {
+    float clean[kTransformFloats], applied[kTransformFloats];
+    float locked[kTransformFloats], freeLook[kTransformFloats];
+    MakeCamera(clean);
+    ComposeTrackedRows(clean, 20, -10, 5, true, 0.25f, 0.1f, -0.2f, applied);
+    WeaponCameraRows(clean, applied, 1.0f, locked);
+    WeaponCameraRows(clean, applied, 0.0f, freeLook);
+    for (int i = 12; i < 15; ++i) {
+        CheckNear(locked[i], applied[i], kTol, "sights locked: the weapon's eye is the leaned eye");
+        CheckNear(freeLook[i], clean[i], kTol, "true free look: the weapon's eye is the clean eye");
+    }
+    Check(BasisEqual(locked, clean) && BasisEqual(freeLook, clean),
+          "both modes place the weapon with the clean basis");
+    for (int i = 15; i < kTransformFloats; ++i) {
+        CheckNear(locked[i], clean[i], kTol, "sights locked leaves the floating-origin cell alone");
+        CheckNear(freeLook[i], clean[i], kTol, "true free look leaves the floating-origin cell alone");
+    }
+}
+
+// Between the two modes, while the toggle's transition runs, the weapon's eye
+// sits that share of the way from the clean eye to the leaned one.
+void TheWeaponEyeSlidesBetweenTheModes() {
+    float clean[kTransformFloats], applied[kTransformFloats], rows[kTransformFloats];
+    MakeCamera(clean);
+    ComposeTrackedRows(clean, 20, -10, 5, true, 0.25f, 0.1f, -0.2f, applied);
+    WeaponCameraRows(clean, applied, 0.25f, rows);
+    for (int i = 12; i < 15; ++i)
+        CheckNear(rows[i], clean[i] + 0.25f * (applied[i] - clean[i]), kTol,
+                  "a quarter of the way through, the eye is a quarter of the lean from the clean eye");
+    Check(BasisEqual(rows, clean), "mid-transition the weapon keeps the clean basis");
+}
+
+// 1.0000 at the un-zoomed field whatever FOV the player picked; under a zoom
+// yaw, pitch and the lean scale and roll does not.
+void ZoomScalesYawPitchAndLeanButNotRoll() {
+    for (float scale : {0.8f, 1.0f, 1.2667f, 1.3333f, 1.6f})
+        CheckNear(ZoomFactor(kUnzoomedCameraField, scale), 1.0f, 1e-6f, "the factor is 1 when nothing is zoomed");
+
+    const float factor = ZoomFactor(40.0f, 1.0f);
+    Check(factor > 0.0f && factor < 1.0f, "a narrower field shrinks the factor");
+    CheckNear(factor, std::tan(10.0f * kDegToRad) / std::tan(18.75f * kDegToRad), 1e-6f,
+              "the factor is the ratio of the vertical half-angle tangents");
+
+    AppliedPose pose{12.0f, -8.0f, 15.0f, 0.2f, -0.1f, -0.3f};
+    ScalePoseForZoom(factor, pose);
+    CheckNear(std::tan(pose.yaw * kDegToRad), std::tan(12.0f * kDegToRad) * factor, 1e-5f,
+              "yaw scales by the factor");
+    CheckNear(std::tan(pose.pitch * kDegToRad), std::tan(-8.0f * kDegToRad) * factor, 1e-5f,
+              "pitch scales by the factor");
+    CheckNear(pose.x, 0.2f * factor, 1e-6f, "x scales linearly");
+    CheckNear(pose.y, -0.1f * factor, 1e-6f, "y scales linearly");
+    CheckNear(pose.z, -0.3f * factor, 1e-6f, "z scales linearly");
+    Check(pose.roll == 15.0f, "roll is never touched");
+
+    AppliedPose unzoomed{12.0f, -8.0f, 15.0f, 0.2f, -0.1f, -0.3f};
+    ScalePoseForZoom(1.0f, unzoomed);
+    CheckNear(unzoomed.yaw, 12.0f, 1e-4f, "a factor of 1 leaves yaw alone");
+    CheckNear(unzoomed.pitch, -8.0f, 1e-4f, "a factor of 1 leaves pitch alone");
+}
+
 }  // namespace
 
 int main() {
@@ -438,6 +506,9 @@ int main() {
     ANegativeZMovesTheEyeForward();
     TheLeanIsResolvedAgainstTheCleanBasisNotTheRotatedOne();
     ComposingWithoutPositionLeavesTheEyeWhereItWas();
+    TheWeaponEyeFollowsTheMode();
+    TheWeaponEyeSlidesBetweenTheModes();
+    ZoomScalesYawPitchAndLeanButNotRoll();
 
     if (g_failures != 0) {
         std::printf("camera_math_test: %d failure(s)\n", g_failures);

@@ -417,6 +417,8 @@ Record ConfigRecord(const NMSHT::Config& c) {
     record["startup.mode"] = ModeName(NMSHT::StartupTrackingMode(c));
     record["hotkey.Toggle"] = ListBindings(c.toggleKey);
     record["hotkey.CycleTrackingMode"] = ListBindings(c.cycleTrackingModeKey);
+    record["hotkey.TrueFreeLook"] = ListBindings(c.trueFreeLookKey);
+    record["field.trueFreeLook"] = Flag(c.trueFreeLook);
     record["hotkey.SweepFreeze"] = ListBindings(c.sweepFreezeKey);
     return record;
 }
@@ -491,6 +493,13 @@ std::vector<std::string> UnexplainedMigrationDifferences(const Record& import, c
                                           [&name](const PoseShapingKey& key) { return name == key.field; });
         if (shaping != std::end(kPoseShaping) && PoseShapingDropped(result, *shaping)) {
             explained.insert("pose-shaping");
+            continue;
+        }
+        // A setting the published build did not have (its [ADS] Mode was the
+        // retired aim cycle, never free look) migrates at the built-in value.
+        if ((name == "field.trueFreeLook" || name == "hotkey.TrueFreeLook") && i == import.end() &&
+            m != migration.end() && m->second == ConfigRecord(NMSHT::ConfigTable().defaults()).at(name)) {
+            explained.insert("new-setting");
             continue;
         }
         // Approved change `reticle`: the crosshair follows the aim whatever
@@ -630,12 +639,13 @@ const char* const kSkewedDefaults =
     "[General]\r\nEnableOnStartup=false\r\nRotationEnabled=false\r\n\r\n"
     "[Smoothing]\r\nLocalSmoothing=0.5\r\nRemoteSmoothing=0.5\r\n\r\n"
     "[Position]\r\nPositionEnabled=true\r\nPositionLimitX=0.5\r\nPositionLimitY=0.5\r\n"
-    "PositionLimitYDown=0.5\r\nPositionLimitZ=0.5\r\nPositionLimitZBack=0.5\r\n\r\n"
-    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\n";
+    "PositionLimitYDown=0.5\r\nPositionLimitZ=0.5\r\nPositionLimitZBack=0.5\r\nTrueFreeLook=true\r\n\r\n"
+    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nTrueFreeLookKey=F10\r\n";
 
 // Each global row the table binds: the concept, the fields of ImportRecord the
 // frozen reader's value for it shows up in, and the fields of ConfigRecord the
-// row decides. The tracking mode is one unit, named by both halves.
+// row decides. The tracking mode is one unit, named by both halves. A row with
+// no ImportRecord field is a setting the published build did not have.
 struct GlobalRow {
     cfg::schema::Concept concept;
     std::vector<std::string> legacyFields;
@@ -658,6 +668,8 @@ std::vector<GlobalRow> GlobalRows() {
         {C::PositionLimitZBack, {"field.posLimitZBack"}, {"field.posLimitZBack"}},
         {C::ToggleKey, {"field.toggleKey"}, {"hotkey.Toggle"}},
         {C::CycleTrackingModeKey, {"field.cycleModeKey"}, {"hotkey.CycleTrackingMode"}},
+        {C::TrueFreeLook, {}, {"field.trueFreeLook"}},
+        {C::TrueFreeLookKey, {}, {"hotkey.TrueFreeLook"}},
     };
 }
 
@@ -753,7 +765,9 @@ int main(int argc, char** argv) {
     for (const GlobalRow& row : GlobalRows()) {
         for (const std::string& field : row.migratedFields) {
             if (field == "startup.mode") continue;
-            Check(skewedGlobal.at(field) != shippedImport.at(field),
+            const Record& shippedValue =
+                row.legacyFields.empty() ? ConfigRecord(NMSHT::ConfigTable().defaults()) : shippedImport;
+            Check(skewedGlobal.at(field) != shippedValue.at(field),
                   "the skewed Defaults.ini differs from the shipped value on " + field);
         }
     }
@@ -856,6 +870,7 @@ int main(int argc, char** argv) {
     }
 
     for (const GlobalRow& row : GlobalRows()) {
+        if (row.legacyFields.empty()) continue;
         Check(changedRowsSeen[row.concept] > 0, std::string("no input changes the row of ") +
                                                     cfg::schema::kConcepts[static_cast<std::size_t>(row.concept)].name);
     }
@@ -865,6 +880,7 @@ int main(int argc, char** argv) {
         {"pose-shaping", "approved change pose_shaping: a sensitivity or inversion off the shipped identity, dropped"},
         {"reticle", "approved change reticle: [Reticle] FollowAim=false, dropped; the crosshair follows the aim"},
         {"caller-none", "a caller list of none, carried as 0x0, which no call returns to"},
+        {"new-setting", "TrueFreeLook and TrueFreeLookKey, which the published build did not have, at their defaults"},
     };
     for (const auto& [id, description] : kAllowances) {
         const auto seen = allowancesSeen.find(id);
