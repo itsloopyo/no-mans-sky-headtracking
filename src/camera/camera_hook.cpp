@@ -539,7 +539,6 @@ void ReportFramePhase() {
     LastReticleOffset(rx, ry);
     HT_LOG("            reticle placed %llu times, last correction (%.2f%% %.2f%%) of frame",
            (unsigned long long)ReticlePlacementCount(), rx, ry);
-    DumpCallerCensus();
 }
 
 bool g_freeze = false;
@@ -852,7 +851,6 @@ void SweepThread() {
     g_sweepFreeze.store(false, std::memory_order_relaxed);
     for (int i = 0;; i = (i + 1) % kSweepCount) {
         g_sweepHits.store(0, std::memory_order_relaxed);
-        g_sweepHits.store(0, std::memory_order_relaxed);
         g_sweepCurrent.store(kSweepCandidates[i], std::memory_order_relaxed);
         HT_LOG("Aim sweep %d/%d: the CLEAN camera now goes to 0x%08X.",
                i + 1, kSweepCount, kSweepCandidates[i]);
@@ -864,14 +862,11 @@ void SweepThread() {
                        kSweepCandidates[i], i + 1, kSweepCount);
                 return;
             }
+            Sleep(50);
+        }
         // A candidate the sweep never intercepted is not evidence about that
         // candidate - it is evidence it is not a call site on this path. Two
         // full sweeps were scored without this number and could not be read.
-        HT_LOG("Aim sweep %d/%d: 0x%08X intercepted %llu time(s).",
-               i + 1, kSweepCount, kSweepCandidates[i],
-               (unsigned long long)g_sweepHits.load(std::memory_order_relaxed));
-            Sleep(50);
-        }
         HT_LOG("Aim sweep %d/%d: 0x%08X took it %llu time(s).", i + 1,
                kSweepCount, kSweepCandidates[i],
                (unsigned long long)g_sweepHits.load());

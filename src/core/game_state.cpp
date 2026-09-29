@@ -222,8 +222,9 @@ void ScanForCandidates() {
 // from it, and it is a pointer, so it is null until the game has built it.
 uintptr_t GameGlobals() {
     if (g_offsets.gameGlobalsPtrRva == 0) return 0;
+    // No readability check on the slot: it is in the image's own data section,
+    // which stays mapped for the life of the process.
     const uintptr_t slot = g_moduleBase + g_offsets.gameGlobalsPtrRva;
-    if (!ReadableLive(slot, sizeof(uintptr_t))) return 0;
     const uintptr_t base = *reinterpret_cast<const uintptr_t*>(slot);
     return ReadableLive(base, sizeof(uintptr_t)) ? base : 0;
 }
@@ -358,7 +359,7 @@ void PollThread() {
     int rescanAttempts = 0;
     for (;;) {
         // Resolved once a poll. Every gate below reads an offset from it, and
-        // each resolution costs two VirtualQuery calls.
+        // each resolution costs a VirtualQuery call.
         const uintptr_t globals = GameGlobals();
         if (!announcedGlobals) announcedGlobals = AnnounceGlobalBlock(globals);
 
@@ -428,6 +429,18 @@ void InstallGameStateProbe(const GameStateOffsets& offsets) {
     g_moduleBase = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     void* const module = reinterpret_cast<void*>(g_moduleBase);
 
+    // GameGlobals reads this slot unchecked on every commit, so a resolved RVA
+    // that a pattern match placed outside the image stops here.
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(g_moduleBase);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(g_moduleBase + dos->e_lfanew);
+    if (g_offsets.gameGlobalsPtrRva != 0 &&
+        g_offsets.gameGlobalsPtrRva + sizeof(uintptr_t) > nt->OptionalHeader.SizeOfImage) {
+        HT_LOG("Game state: the global block slot at RVA 0x%08X is outside the "
+               "image (0x%08X bytes), so it is not read.",
+               g_offsets.gameGlobalsPtrRva, nt->OptionalHeader.SizeOfImage);
+        g_offsets.gameGlobalsPtrRva = 0;
+    }
+
     int resolved = 0;
     for (int i = 0; i < kStateCount; ++i) {
         cameraunlock::memory::VtableInfo info{};
@@ -487,23 +500,32 @@ bool TrackingApplies(const char*& reason) {
     return v->poseApplies;
 }
 
-bool IsInShip() {
-    if (g_offsets.playerFromGlobals == 0) return false;
-    const uintptr_t globals = GameGlobals();
-    if (globals == 0) return false;
-    const uintptr_t player = globals + g_offsets.playerFromGlobals;
-    if (!ReadableLive(player, 0x170)) return false;
+// `player` must already be readable for the 0x170 bytes the engine's getter reads.
+bool PlayerInShip(uintptr_t player) {
     using GetShip = void* (*)(uintptr_t);
     const auto getShip = reinterpret_cast<GetShip>(g_moduleBase + g_offsets.playerShipRva);
     return getShip(player) != nullptr;
 }
 
+bool IsInShip() {
+    if (g_offsets.playerFromGlobals == 0) return false;
+    const uintptr_t globals = GameGlobals();
+    if (globals == 0) return false;
+    const uintptr_t player = globals + g_offsets.playerFromGlobals;
+    return ReadableLive(player, 0x170) && PlayerInShip(player);
+}
+
+// Runs on every camera commit, inside the commit breakpoint's exception handler,
+// so the globals are resolved once and the player block checked once: each
+// ReadableLive is a VirtualQuery syscall that shares the address-space lock with
+// every allocation the engine's streaming threads make.
 bool GetWalkingUp(float up[3]) {
-    if (g_offsets.playerFromGlobals == 0 || IsInShip()) return false;
+    if (g_offsets.playerFromGlobals == 0) return false;
     const uintptr_t globals = GameGlobals();
     if (globals == 0) return false;
     const uintptr_t player = globals + g_offsets.playerFromGlobals;
     if (!ReadableLive(player, 0x32C)) return false;
+    if (PlayerInShip(player)) return false;
 
     const uintptr_t wrapper = *reinterpret_cast<const uintptr_t*>(player + 0x148);
     if (!ReadableLive(wrapper, 0x18)) return false;

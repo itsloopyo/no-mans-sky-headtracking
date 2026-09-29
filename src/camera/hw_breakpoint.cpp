@@ -67,6 +67,8 @@ int SetBreakpointOnAllThreads(int slot, std::uintptr_t address, BreakKind kind,
     // No Man's Sky runs 45 worker threads through a global load, and suspending
     // one that holds a lock the rest are waiting on converts a load that takes
     // seconds into one that does not visibly finish.
+    static std::mutex s_sweepMutex;
+    std::lock_guard<std::mutex> sweepLock(s_sweepMutex);
     static std::set<DWORD> s_armed[4];
     // Windows reuses thread ids, so a thread that inherits a retired id would
     // be skipped forever. Every fifteenth pass forgets what it knows and sweeps
@@ -76,8 +78,6 @@ int SetBreakpointOnAllThreads(int slot, std::uintptr_t address, BreakKind kind,
     static int s_pass[4];
     const bool fullSweep = arm && (++s_pass[slot] % 15) == 0;
     if (fullSweep) s_armed[slot].clear();
-    static std::mutex s_sweepMutex;
-    std::lock_guard<std::mutex> sweepLock(s_sweepMutex);
 
     const DWORD self = GetCurrentThreadId();
     const DWORD pid = GetCurrentProcessId();

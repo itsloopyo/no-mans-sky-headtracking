@@ -521,17 +521,22 @@ void RenderGuiDetour(void* gui) {
         g_renderOriginal(gui);
         return;
     }
+    // Per thread and kept between draws, so the HUD pass does not allocate every
+    // frame. Only the one return site above reaches here, so a draw never nests
+    // inside another on the same thread.
     struct SavedPosition { float* position; float x, y; char* hidden; char visibility; };
+    thread_local std::vector<SavedPosition> t_saved;
     struct DrawState {
-        std::vector<SavedPosition> saved;
+        std::vector<SavedPosition>& saved;
         ~DrawState() {
             for (const auto& entry : saved) {
                 entry.position[0] = entry.x;
                 entry.position[1] = entry.y;
                 *entry.hidden = entry.visibility;
             }
+            saved.clear();
         }
-    } state;
+    } state{t_saved};
     const int count = *reinterpret_cast<const int*>(static_cast<char*>(layer) + 0x5c);
     auto children = *reinterpret_cast<void***>(static_cast<char*>(layer) + 0x60);
     for (int i = 0; i < count; ++i) {
